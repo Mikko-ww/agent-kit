@@ -1,0 +1,32 @@
+[project]
+name = "agent-kit"
+version = "0.1.0"
+description = "Extensible CLI for agent toolkits."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "platformdirs>=4.2,<5.0",
+    "questionary>=2.0,<3.0",
+    "typer>=0.12,<1.0",
+]
+
+[project.scripts]
+agent-kit = "agent_kit.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3,<9.0",
+]
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.pytest.ini_options]
+testpaths = [
+    "tests",
+    "packages/agent-kit-skill-link/tests",
+]
+
+[build-system]
+requires = ["hatchling>=1.27,<2.0"]
+build-backend = "hatchling.build"
