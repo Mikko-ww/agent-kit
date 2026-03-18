@@ -25,6 +25,7 @@
 `agent-kit` 是一个可扩展的 Python CLI 平台，统一入口是 `agent-kit`。
 
 - Core 负责官方插件注册表、插件安装/更新/卸载、版本校验和命令转发。
+- Core 当前支持 `pypi`、`git`、`wheel` 三种官方插件安装来源，其中 `wheel` 需要先下载并校验 `sha256`。
 - 插件运行在各自独立环境中，core 通过子进程调用插件统一入口 `agent-kit-plugin`。
 - 当前第一方插件是 `skills-link`，用于把本地 skills 目录按目录粒度链接到目标目录。
 

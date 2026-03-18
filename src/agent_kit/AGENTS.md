@@ -18,6 +18,7 @@ core 负责：
 - 暴露 `agent-kit plugins <action>` 管理命令
 - 读取并合并内置注册表与本地缓存注册表
 - 安装、更新、卸载官方插件
+- 支持 `pypi | git | wheel` 三种官方插件来源
 - 校验插件元数据、分发包元数据、`api_version` 与 `config_version`
 - 将 `agent-kit <plugin-id> ...` 转发到插件独立环境里的 `agent-kit-plugin`
 
@@ -51,6 +52,7 @@ core 不负责：
 - 插件安装态：`~/.local/share/agent-kit/plugins/<plugin-id>/plugin.json`
 - 插件虚拟环境：`~/.local/share/agent-kit/plugins/<plugin-id>/venv`
 - 注册表缓存：`~/.cache/agent-kit/registry.json`
+- wheel 制品缓存：`~/.cache/agent-kit/artifacts/<plugin-id>/`
 
 ## 5. 修改 Core 时的关注点
 
@@ -61,6 +63,7 @@ core 不负责：
   - `installed_version`
   - `api_version`
   - 分发包版本与来源
+- 改 `wheel` 安装逻辑时，确认会先下载到缓存目录，再校验 `sha256`，最后才执行安装。
 - 改运行逻辑时，确认 `config_version` 不兼容会阻止执行。
 
 ## 6. 相关测试

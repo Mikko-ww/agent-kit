@@ -40,6 +40,12 @@ class AgentKitLayout:
     def registry_cache_path(self) -> Path:
         return self.cache_root / "registry.json"
 
+    def plugin_artifact_dir(self, plugin_id: str) -> Path:
+        return self.cache_root / "artifacts" / plugin_id
+
+    def plugin_artifact_path(self, plugin_id: str, filename: str) -> Path:
+        return self.plugin_artifact_dir(plugin_id) / filename
+
     def plugin_config_dir(self, plugin_id: str) -> Path:
         return self.config_root / "plugins" / plugin_id
 

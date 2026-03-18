@@ -28,6 +28,8 @@ class RegistryPlugin:
     subdirectory: str | None = None
     tag: str | None = None
     commit: str | None = None
+    wheel_url: str | None = None
+    sha256: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, object]) -> "RegistryPlugin":
@@ -44,6 +46,8 @@ class RegistryPlugin:
             subdirectory=_optional_str(data.get("subdirectory")),
             tag=_optional_str(data.get("tag")),
             commit=_optional_str(data.get("commit")),
+            wheel_url=_optional_str(data.get("wheel_url")),
+            sha256=_optional_str(data.get("sha256")),
         )
 
     def install_spec(self) -> str:
@@ -59,6 +63,11 @@ class RegistryPlugin:
             if self.subdirectory:
                 spec = f"{spec}#subdirectory={self.subdirectory}"
             return spec
+
+        if self.source_type == "wheel":
+            if not self.wheel_url or not self.sha256 or not self.package_name:
+                raise ValueError(f"missing wheel source for {self.plugin_id}")
+            return self.wheel_url
 
         raise ValueError(f"unsupported source type: {self.source_type}")
 
