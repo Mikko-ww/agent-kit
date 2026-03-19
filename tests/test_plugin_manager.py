@@ -145,6 +145,15 @@ def test_registry_plugin_supports_wheel_source():
     assert entry.install_spec() == "https://example.com/releases/skills_link-0.2.0-py3-none-any.whl"
 
 
+def test_builtin_registry_includes_opencode_env_switch():
+    registry_module = require_module("agent_kit.registry")
+
+    registry = registry_module.load_builtin_registry()
+
+    assert "opencode-env-switch" in registry["plugins"]
+    assert registry["plugins"]["opencode-env-switch"]["package_name"] == "opencode-env-switch"
+
+
 def test_layout_supports_plugin_artifact_paths(tmp_path: Path):
     paths_module = require_module("agent_kit.paths")
     layout = make_layout(paths_module, tmp_path)

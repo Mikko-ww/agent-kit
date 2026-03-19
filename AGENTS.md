@@ -27,7 +27,9 @@
 - Core 负责官方插件注册表、插件安装/更新/卸载、版本校验和命令转发。
 - Core 当前支持 `pypi`、`git`、`wheel` 三种官方插件安装来源，其中 `wheel` 需要先下载并校验 `sha256`。
 - 插件运行在各自独立环境中，core 通过子进程调用插件统一入口 `agent-kit-plugin`。
-- 当前第一方插件是 `skills-link`，用于把本地 skills 目录按目录粒度链接到目标目录。
+- 当前第一方插件包括：
+  - `skills-link`：把本地 skills 目录按目录粒度链接到目标目录。
+  - `opencode-env-switch`：通过 shell 环境变量切换 OpenCode profile。
 
 ## 4. 顶层目录导航
 
@@ -37,6 +39,8 @@
   共享规则见 [packages/AGENTS.md](packages/AGENTS.md)
 - [packages/skills-link](packages/skills-link)：当前第一方插件
   插件自身规则见 [packages/skills-link/AGENTS.md](packages/skills-link/AGENTS.md)
+- [packages/opencode-env-switch](packages/opencode-env-switch)：OpenCode profile 切换插件
+  插件自身规则见 [packages/opencode-env-switch/AGENTS.md](packages/opencode-env-switch/AGENTS.md)
 - [docs](docs)：设计文档与实施计划
 
 ## 5. AGENTS 分层规则

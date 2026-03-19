@@ -6,7 +6,9 @@
 
 - Core 负责官方插件注册表、插件安装/更新/卸载、版本校验和命令转发。
 - 插件运行在各自独立环境中，core 通过子进程调用统一入口 `agent-kit-plugin`。
-- 当前第一方插件是 [packages/skills-link](packages/skills-link)，用于把本地 skills 目录按目录粒度链接到目标目录。
+- 当前第一方插件包括：
+  - [packages/skills-link](packages/skills-link)：把本地 skills 目录按目录粒度链接到目标目录
+  - [packages/opencode-env-switch](packages/opencode-env-switch)：通过 shell 环境变量切换 OpenCode profile
 
 ## 插件安装模型
 
@@ -53,6 +55,8 @@ agent-kit plugins list
 agent-kit plugins info skills-link
 agent-kit plugins install skills-link
 agent-kit skills-link status
+agent-kit plugins info opencode-env-switch
+agent-kit opencode-env-switch status
 ```
 
 ## 目录说明
