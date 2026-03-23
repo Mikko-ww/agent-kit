@@ -89,6 +89,7 @@ class PluginRuntime:
     data_root: Path
     cache_root: Path
     io: InteractiveIO
+    default_zsh_rc_file: Path | None = None
 
 
 def default_runtime_factory() -> PluginRuntime:
@@ -334,7 +335,10 @@ def main() -> None:
 
 
 def _load_or_default_config(runtime: PluginRuntime) -> OpencodeEnvSwitchConfig:
-    return load_config(runtime.config_root) or default_config(runtime.config_root)
+    return load_config(runtime.config_root) or default_config(
+        runtime.config_root,
+        zsh_rc_file=runtime.default_zsh_rc_file,
+    )
 
 
 def _require_profiles(runtime: PluginRuntime) -> OpencodeEnvSwitchConfig:

@@ -46,12 +46,12 @@ def default_zsh_source_file(config_root: Path) -> Path:
     return config_root / "plugins" / PLUGIN_ID / "zsh" / "active.zsh"
 
 
-def default_config(config_root: Path) -> OpencodeEnvSwitchConfig:
+def default_config(config_root: Path, *, zsh_rc_file: Path | None = None) -> OpencodeEnvSwitchConfig:
     return OpencodeEnvSwitchConfig(
         active_profile=None,
         shells=ShellsConfig(
             zsh=ZshShellConfig(
-                rc_file=Path("~/.zshrc").expanduser(),
+                rc_file=(zsh_rc_file or Path("~/.zshrc").expanduser()),
                 source_file=default_zsh_source_file(config_root),
                 installed=False,
             )

@@ -62,6 +62,7 @@ def build_app(tmp_path: Path, io: FakeIO):
         data_root=tmp_path / "data",
         cache_root=tmp_path / "cache",
         io=io,
+        default_zsh_rc_file=tmp_path / ".zshrc",
     )
     return plugin_cli.build_app(runtime_factory=lambda: runtime)
 
@@ -103,7 +104,6 @@ def test_plugin_metadata_output():
 
 
 def test_init_zsh_installs_source_block_and_writes_managed_file(tmp_path: Path):
-    save_config(tmp_path, [])
     app = build_app(tmp_path, FakeIO(confirm_answers=[True]))
     runner = CliRunner()
 
