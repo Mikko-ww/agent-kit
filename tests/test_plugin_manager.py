@@ -556,3 +556,70 @@ def test_run_plugin_blocks_on_config_version_mismatch(tmp_path: Path):
 
     with pytest.raises(manager_module.PluginError, match="config version mismatch"):
         manager.run_plugin("skills-link", ["status"])
+
+
+def test_run_plugin_passes_resolved_language_to_plugin_process(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from types import SimpleNamespace
+
+    paths_module = require_module("agent_kit.paths")
+    registry_module = require_module("agent_kit.registry")
+    manager_module = require_module("agent_kit.plugin_manager")
+    layout = make_layout(paths_module, tmp_path)
+    store = make_store(
+        registry_module,
+        layout,
+        {
+            "skills-link": {
+                "plugin_id": "skills-link",
+                "display_name": "Skills Link",
+                "description": "plugin",
+                "source_type": "pypi",
+                "package_name": "skills-link",
+                "version": "0.1.0",
+                "api_version": 1,
+                "min_core_version": "0.1.0",
+            }
+        },
+    )
+    executable = layout.plugin_executable_path("skills-link")
+    executable.parent.mkdir(parents=True, exist_ok=True)
+    executable.write_text("", encoding="utf-8")
+    layout.plugin_state_path("skills-link").parent.mkdir(parents=True, exist_ok=True)
+    layout.plugin_state_path("skills-link").write_text(
+        json.dumps(
+            {
+                "plugin_id": "skills-link",
+                "installed_version": "0.1.0",
+                "latest_known_version": "0.1.0",
+                "source_type": "pypi",
+                "source_ref": "skills-link==0.1.0",
+                "source_sha256": None,
+                "api_version": 1,
+                "config_version": 1,
+                "venv_path": str(layout.plugin_venv_dir("skills-link")),
+                "executable_path": str(executable),
+                "installed_at": "2026-03-23T00:00:00+00:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+    layout.plugin_config_dir("skills-link").mkdir(parents=True, exist_ok=True)
+    layout.plugin_config_path("skills-link").write_text('{"config_version": 1}\n', encoding="utf-8")
+    monkeypatch.setenv("AGENT_KIT_LANG", "zh-CN")
+    captured = {}
+
+    def command_runner(args, **kwargs):
+        captured["env"] = kwargs["env"]
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    manager = manager_module.PluginManager(layout=layout, registry_store=store, command_runner=command_runner)
+    manager.probe_plugin_metadata = lambda plugin_id: {
+        "plugin_id": plugin_id,
+        "installed_version": "0.1.0",
+        "api_version": 1,
+        "config_version": 1,
+    }
+
+    manager.run_plugin("skills-link", ["status"])
+
+    assert captured["env"]["AGENT_KIT_LANG"] == "zh-CN"

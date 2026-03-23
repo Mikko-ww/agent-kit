@@ -94,6 +94,22 @@ def test_plugin_metadata_output():
     assert '"config_version": 2' in result.output
 
 
+def test_help_uses_zh_cn_for_root_and_target_commands(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("AGENT_KIT_LANG", "zh-CN")
+    app = build_app(tmp_path, FakeIO())
+    runner = CliRunner()
+
+    root_help = runner.invoke(app, ["--help"])
+    target_help = runner.invoke(app, ["target", "--help"])
+
+    assert root_help.exit_code == 0
+    assert "把本地 skills 链接到一个或多个目标目录。" in root_help.output
+    assert "查看当前 skill 链接状态。" in root_help.output
+    assert target_help.exit_code == 0
+    assert "管理已登记的目标目录。" in target_help.output
+    assert "新增一个目标目录。" in target_help.output
+
+
 def test_list_auto_runs_init_when_not_configured_and_writes_multi_target_config(tmp_path: Path):
     source_dir = tmp_path / "skills"
     target_dir = tmp_path / "codex"
@@ -114,6 +130,28 @@ def test_list_auto_runs_init_when_not_configured_and_writes_multi_target_config(
     assert '"config_version": 2' in config_path.read_text(encoding="utf-8")
     assert '"name": "codex"' in config_path.read_text(encoding="utf-8")
     assert target_dir.exists()
+
+
+def test_list_auto_init_warning_and_target_update_error_use_zh_cn(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    source_dir = tmp_path / "skills"
+    target_dir = tmp_path / "codex"
+    source_dir.mkdir()
+    write_skill(source_dir, "alpha")
+    monkeypatch.setenv("AGENT_KIT_LANG", "zh-CN")
+    io = FakeIO(
+        text_answers=[str(source_dir), "codex", str(target_dir)],
+        confirm_answers=[True],
+    )
+    app = build_app(tmp_path, io)
+    runner = CliRunner()
+
+    list_result = runner.invoke(app, ["list"])
+    update_result = runner.invoke(app, ["target", "update", "--name", "codex"])
+
+    assert list_result.exit_code == 0
+    assert "skills-link 尚未完成配置，开始初始化。" in list_result.output
+    assert update_result.exit_code == 1
+    assert "至少需要提供 --new-name 或 --path 之一" in update_result.output
 
 
 def test_list_auto_runs_init_when_paths_are_wrapped_in_quotes(tmp_path: Path):

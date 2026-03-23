@@ -7,6 +7,7 @@
 - 新插件默认不要再使用 `agent-kit-` 前缀。
 - 插件分发名、目录名和 `plugin_id` 应尽量保持短而一致。
 - 每个插件都必须有自己的目录级 `AGENTS.md`，不要把插件私有规则继续堆到根目录。
+- 所有插件的用户可见文本都必须接入多语言消息层，不能继续直接写死在 CLI 逻辑里。
 
 ## 2. 命名规范
 
@@ -27,6 +28,8 @@
   - `api_version`
   - `config_version`
 - 使用自己的 `config.jsonc` 保存业务配置
+- 被 core 启动时必须遵从 core 透传的 `AGENT_KIT_LANG`
+- 直接运行 `agent-kit-plugin` 时，仍需按 `env > global config > system locale > en` 回退
 
 ## 4. 新增插件 Checklist
 
@@ -47,4 +50,5 @@
 
 - 插件自己的行为测试放在 `packages/<plugin>/tests/`
 - 改插件协议时，同时检查 core 相关测试是否需要调整
+- 改插件 CLI 文案时，同时检查 `--help`、交互提示、warning/error、状态输出是否覆盖到中英文测试
 - 声称完成前至少执行一次 `uv run pytest`

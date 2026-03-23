@@ -18,6 +18,8 @@ from opencode_env_switch.config import (
     load_config,
     save_config,
 )
+from opencode_env_switch.locale import resolve_language
+from opencode_env_switch.messages import translate
 from opencode_env_switch.logic import (
     activate_profile,
     add_profile,
@@ -104,13 +106,14 @@ def default_runtime_factory() -> PluginRuntime:
 
 
 def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
+    language = _runtime_language(runtime_factory())
     app = typer.Typer(
-        help="Switch OpenCode profiles through managed shell environment files.",
+        help=_t(language, "app.help"),
         no_args_is_help=True,
         add_completion=False,
     )
-    init_app = typer.Typer(help="Install shell integration.", no_args_is_help=True)
-    profile_app = typer.Typer(help="Manage OpenCode profiles.", no_args_is_help=True)
+    init_app = typer.Typer(help=_t(language, "init.help"), no_args_is_help=True)
+    profile_app = typer.Typer(help=_t(language, "profile.help"), no_args_is_help=True)
     app.add_typer(init_app, name="init")
     app.add_typer(profile_app, name="profile")
 
@@ -120,7 +123,7 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
         plugin_metadata: bool = typer.Option(
             False,
             "--plugin-metadata",
-            help="Print plugin metadata as JSON.",
+            help=_t(language, "metadata.help"),
             is_eager=True,
         ),
     ) -> None:
@@ -137,45 +140,45 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
             )
             raise typer.Exit()
 
-    @init_app.command("zsh")
+    @init_app.command("zsh", help=_t(language, "init.zsh.help"))
     def init_zsh_command() -> None:
         runtime = runtime_factory()
         config = _load_or_default_config(runtime)
         if not runtime.io.confirm(
-            f"Install zsh integration into {config.shells.zsh.rc_file}?",
+            _tr(runtime, "prompt.install_zsh", path=config.shells.zsh.rc_file),
             default=True,
         ):
-            runtime.io.warn("Skipped zsh integration.")
+            runtime.io.warn(_tr(runtime, "warning.skipped_zsh"))
             return
         active_profile = _active_profile_or_none(config)
         write_shell_source_file(config.shells.zsh.source_file, render_zsh_env(active_profile))
         install_or_update_zsh_integration(config.shells.zsh.rc_file, config.shells.zsh.source_file)
         saved_path = save_config(runtime.config_root, set_zsh_installed(config, True))
-        runtime.io.echo(f"Saved configuration to {saved_path}")
-        runtime.io.echo(f"Installed zsh integration into {config.shells.zsh.rc_file}")
+        runtime.io.echo(_tr(runtime, "saved.config", path=saved_path))
+        runtime.io.echo(_tr(runtime, "result.installed_zsh", path=config.shells.zsh.rc_file))
 
-    @profile_app.command("list")
+    @profile_app.command("list", help=_t(language, "profile.list.help"))
     def profile_list_command() -> None:
         runtime = runtime_factory()
         config = _load_or_default_config(runtime)
         if not config.profiles:
-            runtime.io.warn("No profiles configured.")
+            runtime.io.warn(_tr(runtime, "warning.no_profiles"))
             return
-        runtime.io.echo(f"active_profile: {config.active_profile}")
+        runtime.io.echo(_tr(runtime, "label.active_profile", value=config.active_profile))
         for profile in config.profiles:
             runtime.io.echo(f"[{profile.name}]")
-            runtime.io.echo(f"description: {profile.description or '-'}")
-            runtime.io.echo(f"opencode_config: {profile.opencode_config or '-'}")
-            runtime.io.echo(f"tui_config: {profile.tui_config or '-'}")
-            runtime.io.echo(f"config_dir: {profile.config_dir or '-'}")
+            runtime.io.echo(_tr(runtime, "label.description", value=profile.description or "-"))
+            runtime.io.echo(_tr(runtime, "label.path_item", field="opencode_config", value=profile.opencode_config or "-"))
+            runtime.io.echo(_tr(runtime, "label.path_item", field="tui_config", value=profile.tui_config or "-"))
+            runtime.io.echo(_tr(runtime, "label.path_item", field="config_dir", value=profile.config_dir or "-"))
 
-    @profile_app.command("add")
+    @profile_app.command("add", help=_t(language, "profile.add.help"))
     def profile_add_command(
-        name: str | None = typer.Option(None, "--name", help="Profile name."),
-        description: str | None = typer.Option(None, "--description", help="Profile description."),
-        opencode_config: str | None = typer.Option(None, "--opencode-config", help="OpenCode config file path."),
-        tui_config: str | None = typer.Option(None, "--tui-config", help="OpenCode TUI config file path."),
-        config_dir: str | None = typer.Option(None, "--config-dir", help="OpenCode config directory path."),
+        name: str | None = typer.Option(None, "--name", help=_t(language, "option.name")),
+        description: str | None = typer.Option(None, "--description", help=_t(language, "option.description")),
+        opencode_config: str | None = typer.Option(None, "--opencode-config", help=_t(language, "option.opencode_config")),
+        tui_config: str | None = typer.Option(None, "--tui-config", help=_t(language, "option.tui_config")),
+        config_dir: str | None = typer.Option(None, "--config-dir", help=_t(language, "option.config_dir")),
     ) -> None:
         runtime = runtime_factory()
         config = _load_or_default_config(runtime)
@@ -191,24 +194,24 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
                 profile = ProfileConfig(
                     name=profile.name,
                     description=profile.description,
-                    opencode_config=_prompt_optional_file_path(runtime, "OpenCode config file"),
-                    tui_config=_prompt_optional_file_path(runtime, "OpenCode TUI config file"),
-                    config_dir=_prompt_optional_dir_path(runtime, "OpenCode config directory"),
+                    opencode_config=_prompt_optional_file_path(runtime, _tr(runtime, "prompt.opencode_config")),
+                    tui_config=_prompt_optional_file_path(runtime, _tr(runtime, "prompt.tui_config")),
+                    config_dir=_prompt_optional_dir_path(runtime, _tr(runtime, "prompt.config_dir")),
                 )
             updated = add_profile(config, profile)
             saved_path = save_config(runtime.config_root, updated)
         except ValueError as exc:
             _exit_with_error(runtime, exc)
-        runtime.io.echo(f"Saved configuration to {saved_path}")
+        runtime.io.echo(_tr(runtime, "saved.config", path=saved_path))
 
-    @profile_app.command("update")
+    @profile_app.command("update", help=_t(language, "profile.update.help"))
     def profile_update_command(
-        name: str | None = typer.Option(None, "--name", help="Existing profile name."),
-        new_name: str | None = typer.Option(None, "--new-name", help="New profile name."),
-        description: str | None = typer.Option(None, "--description", help="New profile description."),
-        opencode_config: str | None = typer.Option(None, "--opencode-config", help="OpenCode config file path."),
-        tui_config: str | None = typer.Option(None, "--tui-config", help="OpenCode TUI config file path."),
-        config_dir: str | None = typer.Option(None, "--config-dir", help="OpenCode config directory path."),
+        name: str | None = typer.Option(None, "--name", help=_t(language, "option.existing_name")),
+        new_name: str | None = typer.Option(None, "--new-name", help=_t(language, "option.new_name")),
+        description: str | None = typer.Option(None, "--description", help=_t(language, "option.new_description")),
+        opencode_config: str | None = typer.Option(None, "--opencode-config", help=_t(language, "option.opencode_config")),
+        tui_config: str | None = typer.Option(None, "--tui-config", help=_t(language, "option.tui_config")),
+        config_dir: str | None = typer.Option(None, "--config-dir", help=_t(language, "option.config_dir")),
     ) -> None:
         runtime = runtime_factory()
         config = _require_profiles(runtime)
@@ -221,21 +224,21 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
             and config_dir is None
         ):
             existing = get_profile(config, selected_name)
-            new_name = runtime.io.prompt_text("Profile name", default=existing.name).strip()
+            new_name = runtime.io.prompt_text(_tr(runtime, "prompt.profile_name"), default=existing.name).strip()
             description = runtime.io.prompt_text(
-                "Profile description",
+                _tr(runtime, "prompt.profile_description"),
                 default=existing.description or "",
             ).strip() or existing.description
             opencode_config = runtime.io.prompt_text(
-                "OpenCode config file",
+                _tr(runtime, "prompt.opencode_config"),
                 default=str(existing.opencode_config) if existing.opencode_config else "",
             ).strip() or (str(existing.opencode_config) if existing.opencode_config else None)
             tui_config = runtime.io.prompt_text(
-                "OpenCode TUI config file",
+                _tr(runtime, "prompt.tui_config"),
                 default=str(existing.tui_config) if existing.tui_config else "",
             ).strip() or (str(existing.tui_config) if existing.tui_config else None)
             config_dir = runtime.io.prompt_text(
-                "OpenCode config directory",
+                _tr(runtime, "prompt.config_dir"),
                 default=str(existing.config_dir) if existing.config_dir else "",
             ).strip() or (str(existing.config_dir) if existing.config_dir else None)
         try:
@@ -251,11 +254,11 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
             saved_path = save_config(runtime.config_root, updated)
         except ValueError as exc:
             _exit_with_error(runtime, exc)
-        runtime.io.echo(f"Saved configuration to {saved_path}")
+        runtime.io.echo(_tr(runtime, "saved.config", path=saved_path))
 
-    @profile_app.command("remove")
+    @profile_app.command("remove", help=_t(language, "profile.remove.help"))
     def profile_remove_command(
-        name: str = typer.Option(..., "--name", help="Profile name."),
+        name: str = typer.Option(..., "--name", help=_t(language, "option.name")),
     ) -> None:
         runtime = runtime_factory()
         config = _require_profiles(runtime)
@@ -264,11 +267,11 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
             saved_path = save_config(runtime.config_root, updated)
         except ValueError as exc:
             _exit_with_error(runtime, exc)
-        runtime.io.echo(f"Saved configuration to {saved_path}")
+        runtime.io.echo(_tr(runtime, "saved.config", path=saved_path))
 
-    @app.command("switch")
+    @app.command("switch", help=_t(language, "switch.help"))
     def switch_command(
-        name: str | None = typer.Option(None, "--name", help="Profile name."),
+        name: str | None = typer.Option(None, "--name", help=_t(language, "option.name")),
     ) -> None:
         runtime = runtime_factory()
         config = _require_profiles(runtime)
@@ -281,16 +284,16 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
             save_config(runtime.config_root, updated)
         except ValueError as exc:
             _exit_with_error(runtime, exc)
-        runtime.io.echo(f"Switched active profile to {selected_name}")
+        runtime.io.echo(_tr(runtime, "result.switched", name=selected_name))
 
-    @app.command("export")
+    @app.command("export", help=_t(language, "export.help"))
     def export_command(
-        name: str | None = typer.Option(None, "--name", help="Profile name."),
-        shell: str = typer.Option("zsh", "--shell", help="Shell type."),
+        name: str | None = typer.Option(None, "--name", help=_t(language, "option.name")),
+        shell: str = typer.Option("zsh", "--shell", help=_t(language, "option.shell")),
     ) -> None:
         runtime = runtime_factory()
         if shell != "zsh":
-            _exit_with_error(runtime, ValueError(f"unsupported shell: {shell}"))
+            _exit_with_error(runtime, ValueError(_tr(runtime, "error.unsupported_shell", shell=shell)))
         config = _require_profiles(runtime)
         selected_name = name or _select_profile_name(runtime, config)
         try:
@@ -300,7 +303,7 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
             _exit_with_error(runtime, exc)
         runtime.io.echo(render_zsh_env(profile))
 
-    @app.command("status")
+    @app.command("status", help=_t(language, "status.help"))
     def status_command() -> None:
         runtime = runtime_factory()
         config_path = runtime.config_root / "plugins" / PLUGIN_ID / "config.jsonc"
@@ -308,24 +311,24 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
         config = loaded or default_config(runtime.config_root)
         zsh_status = inspect_zsh_integration(config.shells.zsh)
 
-        runtime.io.echo(f"config_path: {config_path}")
-        runtime.io.echo(f"config_exists: {_format_yes_no(loaded is not None)}")
-        runtime.io.echo(f"active_profile: {config.active_profile}")
-        runtime.io.echo(f"profiles: {len(config.profiles)}")
-        runtime.io.echo(f"zsh_rc_file: {config.shells.zsh.rc_file}")
-        runtime.io.echo(f"zsh_source_file: {config.shells.zsh.source_file}")
-        runtime.io.echo(f"zsh_config_installed: {_format_yes_no(config.shells.zsh.installed)}")
-        runtime.io.echo(f"zsh_block_present: {_format_yes_no(zsh_status.block_present)}")
-        runtime.io.echo(f"zsh_source_exists: {_format_yes_no(zsh_status.source_exists)}")
+        runtime.io.echo(_tr(runtime, "label.config_path", value=config_path))
+        runtime.io.echo(_tr(runtime, "label.config_exists", value=_format_yes_no(loaded is not None, runtime)))
+        runtime.io.echo(_tr(runtime, "label.active_profile", value=config.active_profile))
+        runtime.io.echo(_tr(runtime, "label.profiles", value=len(config.profiles)))
+        runtime.io.echo(_tr(runtime, "label.zsh_rc_file", value=config.shells.zsh.rc_file))
+        runtime.io.echo(_tr(runtime, "label.zsh_source_file", value=config.shells.zsh.source_file))
+        runtime.io.echo(_tr(runtime, "label.zsh_config_installed", value=_format_yes_no(config.shells.zsh.installed, runtime)))
+        runtime.io.echo(_tr(runtime, "label.zsh_block_present", value=_format_yes_no(zsh_status.block_present, runtime)))
+        runtime.io.echo(_tr(runtime, "label.zsh_source_exists", value=_format_yes_no(zsh_status.source_exists, runtime)))
 
         for profile in config.profiles:
             runtime.io.echo(f"[{profile.name}]")
-            runtime.io.echo(f"active: {_format_yes_no(profile.name == config.active_profile)}")
-            runtime.io.echo(f"description: {profile.description or '-'}")
+            runtime.io.echo(_tr(runtime, "label.active", value=_format_yes_no(profile.name == config.active_profile, runtime)))
+            runtime.io.echo(_tr(runtime, "label.description", value=profile.description or "-"))
             statuses = profile_path_statuses(profile)
             for key, status in statuses.items():
-                runtime.io.echo(f"{key}: {status.path or '-'}")
-                runtime.io.echo(f"{key}_valid: {_format_optional_validity(status.valid)}")
+                runtime.io.echo(_tr(runtime, "label.path_item", field=key, value=status.path or "-"))
+                runtime.io.echo(_tr(runtime, "label.path_validity", field=key, value=_format_optional_validity(status.valid, runtime)))
 
     return app
 
@@ -350,7 +353,7 @@ def _require_profiles(runtime: PluginRuntime) -> OpencodeEnvSwitchConfig:
 
 def _select_profile_name(runtime: PluginRuntime, config: OpencodeEnvSwitchConfig) -> str:
     return runtime.io.select_one(
-        "Select profile",
+        _tr(runtime, "prompt.select_profile"),
         [profile.name for profile in config.profiles],
     )
 
@@ -360,10 +363,10 @@ def _resolve_profile_name(runtime: PluginRuntime, name: str | None) -> str:
     if resolved:
         return resolved
     while True:
-        resolved = runtime.io.prompt_text("Profile name").strip()
+        resolved = runtime.io.prompt_text(_tr(runtime, "prompt.profile_name")).strip()
         if resolved:
             return resolved
-        runtime.io.error("profile name is required")
+        runtime.io.error(_tr(runtime, "error.profile_name_required"))
 
 
 def _resolve_optional_file_path(value: str | None, *, key: str) -> Path | None:
@@ -418,14 +421,14 @@ def _active_profile_or_none(config: OpencodeEnvSwitchConfig) -> ProfileConfig | 
     return get_profile(config, config.active_profile)
 
 
-def _format_yes_no(value: bool) -> str:
-    return "yes" if value else "no"
+def _format_yes_no(value: bool, runtime: PluginRuntime | None = None) -> str:
+    return translate(_runtime_language(runtime), "yes" if value else "no")
 
 
-def _format_optional_validity(value: bool | None) -> str:
+def _format_optional_validity(value: bool | None, runtime: PluginRuntime | None = None) -> str:
     if value is None:
         return "-"
-    return _format_yes_no(value)
+    return _format_yes_no(value, runtime)
 
 
 def _label_to_key(label: str) -> str:
@@ -440,3 +443,19 @@ def _label_to_key(label: str) -> str:
 def _exit_with_error(runtime: PluginRuntime, exc: ValueError) -> None:
     runtime.io.error(str(exc))
     raise typer.Exit(code=1) from exc
+
+
+def _runtime_language(runtime: PluginRuntime | None) -> str:
+    if runtime is not None and hasattr(runtime, "language"):
+        return getattr(runtime, "language")
+    if runtime is not None:
+        return resolve_language(runtime.config_root)
+    return resolve_language(Path(os.environ.get("AGENT_KIT_CONFIG_DIR", "~/.config/agent-kit")).expanduser())
+
+
+def _tr(runtime: PluginRuntime, key: str, **kwargs: object) -> str:
+    return translate(_runtime_language(runtime), key, **kwargs)
+
+
+def _t(language: str, key: str, **kwargs: object) -> str:
+    return translate(language, key, **kwargs)

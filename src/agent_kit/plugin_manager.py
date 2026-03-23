@@ -16,6 +16,7 @@ from packaging.version import Version
 
 from agent_kit import __version__ as CORE_VERSION
 from agent_kit.jsonc import load_jsonc
+from agent_kit.locale import resolve_language
 from agent_kit.paths import AgentKitLayout
 from agent_kit.registry import RegistryPlugin, RegistryStore
 
@@ -385,6 +386,7 @@ class PluginManager:
         env["AGENT_KIT_DATA_DIR"] = str(self.layout.data_root)
         env["AGENT_KIT_CACHE_DIR"] = str(self.layout.cache_root)
         env["AGENT_KIT_PLUGIN_ID"] = plugin_id
+        env["AGENT_KIT_LANG"] = resolve_language(config_path=self.layout.global_config_path).code
         return env
 
     def _ensure_core_compatible(self, entry: RegistryPlugin) -> None:

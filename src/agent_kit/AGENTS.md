@@ -9,6 +9,7 @@
   - [../../registry/official.json](../../registry/official.json)
   - [official_registry.json](official_registry.json)
 - 任何会影响插件安装、运行或校验逻辑的改动，都要同步检查 CLI 输出、`plugin.json` 结构和测试。
+- core 负责解析 CLI 最终语言、维护全局 `config.jsonc.language`，并在启动插件进程时透传最终语言。
 
 ## 2. Core 职责边界
 
@@ -37,6 +38,8 @@ core 不负责：
 - [paths.py](paths.py)：配置、数据、缓存目录布局
 - [jsonc.py](jsonc.py)：JSONC 解析与写入
 - [context.py](context.py)：基础交互上下文
+- [locale.py](locale.py)：全局语言决议与 `language` 配置读写
+- [messages.py](messages.py)：core CLI 多语言文案
 
 ## 4. 目录与状态模型
 
@@ -57,6 +60,7 @@ core 不负责：
 ## 5. 修改 Core 时的关注点
 
 - 改 CLI 时，确认 `agent-kit --help`、`agent-kit plugins ...` 和动态插件命令行为一致。
+- 改语言或帮助输出时，确认 `agent-kit config get/set language`、`agent-kit --help`、`agent-kit plugins --help` 和插件透传语言行为一致。
 - 改注册表时，确认本地内置注册表和仓库副本同步。
 - 改安装逻辑时，确认安装后会校验：
   - `plugin_id`

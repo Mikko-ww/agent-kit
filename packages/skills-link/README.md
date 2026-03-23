@@ -62,6 +62,15 @@ agent-kit skills-link target update --name codex --path /new/path/to/codex/skill
 agent-kit skills-link target remove --name codex
 ```
 
+## CLI 语言
+
+`skills-link` 的帮助文案、交互提示、warning/error 和状态输出都会遵从 `agent-kit` 的全局语言策略。
+
+- 默认语言是英文
+- 支持 `en` 与 `zh-CN`
+- 通过 `agent-kit skills-link ...` 运行时，语言由 core 决议后透传
+- 直接运行插件入口时，也会按 `AGENT_KIT_LANG`、全局 `language` 配置、系统语言、英文默认值的顺序回退
+
 ## 行为约束
 
 - 只识别 `source_dir` 下一层直接子目录中包含 `SKILL.md` 的目录

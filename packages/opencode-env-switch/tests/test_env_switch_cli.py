@@ -103,6 +103,22 @@ def test_plugin_metadata_output():
     assert '"config_version": 1' in result.output
 
 
+def test_help_uses_zh_cn_for_root_and_profile_commands(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("AGENT_KIT_LANG", "zh-CN")
+    app = build_app(tmp_path, FakeIO())
+    runner = CliRunner()
+
+    root_help = runner.invoke(app, ["--help"])
+    profile_help = runner.invoke(app, ["profile", "--help"])
+
+    assert root_help.exit_code == 0
+    assert "通过受管 shell 环境文件切换 OpenCode profile。" in root_help.output
+    assert "查看当前受管状态和 profile 路径状态。" in root_help.output
+    assert profile_help.exit_code == 0
+    assert "管理 OpenCode profiles。" in profile_help.output
+    assert "新增一个 OpenCode profile。" in profile_help.output
+
+
 def test_init_zsh_installs_source_block_and_writes_managed_file(tmp_path: Path):
     app = build_app(tmp_path, FakeIO(confirm_answers=[True]))
     runner = CliRunner()
@@ -116,6 +132,20 @@ def test_init_zsh_installs_source_block_and_writes_managed_file(tmp_path: Path):
     assert source_file.exists()
     assert 'source "' in rc_file.read_text(encoding="utf-8")
     assert "unset OPENCODE_CONFIG" in source_file.read_text(encoding="utf-8")
+
+
+def test_profile_list_warning_and_export_error_use_zh_cn(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("AGENT_KIT_LANG", "zh-CN")
+    app = build_app(tmp_path, FakeIO())
+    runner = CliRunner()
+
+    list_result = runner.invoke(app, ["profile", "list"])
+    export_result = runner.invoke(app, ["export", "--shell", "bash"])
+
+    assert list_result.exit_code == 0
+    assert "当前没有配置任何 profile。" in list_result.output
+    assert export_result.exit_code == 1
+    assert "不支持的 shell: bash" in export_result.output
 
 
 def test_profile_add_list_and_switch_commands_manage_profiles(tmp_path: Path):

@@ -12,6 +12,7 @@ import typer
 
 from skills_link import API_VERSION, CONFIG_VERSION, PLUGIN_ID, __version__
 from skills_link.config import SkillLinkConfig, TargetConfig, load_config, save_config
+from skills_link.locale import resolve_language
 from skills_link.logic import (
     LinkResult,
     SkillStatus,
@@ -28,6 +29,7 @@ from skills_link.logic import (
     validate_source_dir,
     validate_target_dir,
 )
+from skills_link.messages import translate
 
 
 class InteractiveIO(Protocol):
@@ -99,12 +101,13 @@ def default_runtime_factory() -> PluginRuntime:
 
 
 def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
+    language = _runtime_language(runtime_factory())
     app = typer.Typer(
-        help="Link selected local skills into one or more target directories.",
+        help=_t(language, "app.help"),
         no_args_is_help=True,
         add_completion=False,
     )
-    target_app = typer.Typer(help="Manage registered target directories.", no_args_is_help=True)
+    target_app = typer.Typer(help=_t(language, "target.help"), no_args_is_help=True)
     app.add_typer(target_app, name="target")
 
     @app.callback(invoke_without_command=True)
@@ -113,7 +116,7 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
         plugin_metadata: bool = typer.Option(
             False,
             "--plugin-metadata",
-            help="Print plugin metadata as JSON.",
+            help=_t(language, "metadata.help"),
             is_eager=True,
         ),
     ) -> None:
@@ -130,14 +133,14 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
             )
             raise typer.Exit()
 
-    @app.command("init")
+    @app.command("init", help=_t(language, "init.help"))
     def init_command() -> None:
         runtime = runtime_factory()
         _run_init(runtime)
 
-    @app.command("list")
+    @app.command("list", help=_t(language, "list.help"))
     def list_command(
-        target_names: list[str] = typer.Option([], "--target", help="Limit to specific target names."),
+        target_names: list[str] = typer.Option([], "--target", help=_t(language, "option.target")),
     ) -> None:
         runtime = runtime_factory()
         config = _require_config(runtime)
@@ -146,14 +149,14 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
         except ValueError as exc:
             _exit_with_error(runtime, exc)
         if not statuses:
-            runtime.io.warn("No skills found in the configured source directory.")
+            runtime.io.warn(_tr(runtime, "warning.no_skills_found"))
             return
         for status in statuses:
-            runtime.io.echo(_format_skill_status(status))
+            runtime.io.echo(_format_skill_status(status, runtime))
 
-    @app.command("link")
+    @app.command("link", help=_t(language, "link.help"))
     def link_command(
-        target_names: list[str] = typer.Option([], "--target", help="Limit to specific target names."),
+        target_names: list[str] = typer.Option([], "--target", help=_t(language, "option.target")),
     ) -> None:
         runtime = runtime_factory()
         config = _require_config(runtime)
@@ -166,11 +169,11 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
                 if any(target.status == "not_linked" for target in status.target_statuses)
             ]
             if not available:
-                runtime.io.warn("No skills are available to link.")
+                runtime.io.warn(_tr(runtime, "warning.no_skills_available"))
                 return
-            selected = runtime.io.select_many("Select skills to link", available)
+            selected = runtime.io.select_many(_tr(runtime, "prompt.select_link"), available)
             if not selected:
-                runtime.io.warn("No skills selected.")
+                runtime.io.warn(_tr(runtime, "warning.no_skills_selected"))
                 return
             result = link_skills(config, selected, target_names=selected_targets)
         except ValueError as exc:
@@ -179,9 +182,9 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
         if result.conflicts:
             raise typer.Exit(code=1)
 
-    @app.command("unlink")
+    @app.command("unlink", help=_t(language, "unlink.help"))
     def unlink_command(
-        target_names: list[str] = typer.Option([], "--target", help="Limit to specific target names."),
+        target_names: list[str] = typer.Option([], "--target", help=_t(language, "option.target")),
     ) -> None:
         runtime = runtime_factory()
         config = _require_config(runtime)
@@ -194,35 +197,35 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
                 if any(target.status == "linked" for target in status.target_statuses)
             ]
             if not removable:
-                runtime.io.warn("No managed links are available to unlink.")
+                runtime.io.warn(_tr(runtime, "warning.no_links_available"))
                 return
-            selected = runtime.io.select_many("Select skills to unlink", removable)
+            selected = runtime.io.select_many(_tr(runtime, "prompt.select_unlink"), removable)
             if not selected:
-                runtime.io.warn("No skills selected.")
+                runtime.io.warn(_tr(runtime, "warning.no_skills_selected"))
                 return
             result = unlink_skills(config, selected, target_names=selected_targets)
         except ValueError as exc:
             _exit_with_error(runtime, exc)
         _report_unlink_result(runtime, result)
 
-    @app.command("status")
+    @app.command("status", help=_t(language, "status.help"))
     def status_command(
-        target_names: list[str] = typer.Option([], "--target", help="Limit to specific target names."),
+        target_names: list[str] = typer.Option([], "--target", help=_t(language, "option.target")),
     ) -> None:
         runtime = runtime_factory()
         config = _require_config(runtime)
         source_available = config.source_dir.exists() and config.source_dir.is_dir()
-        runtime.io.echo(f"source_dir: {config.source_dir}")
-        runtime.io.echo(f"source_available: {_format_yes_no(source_available)}")
+        runtime.io.echo(_tr(runtime, "label.source_dir", value=config.source_dir))
+        runtime.io.echo(_tr(runtime, "label.source_available", value=_format_yes_no(source_available, runtime)))
         try:
             summaries = _load_target_summaries(config, target_names, source_available=source_available)
         except ValueError as exc:
             _exit_with_error(runtime, exc)
-        runtime.io.echo(f"targets: {len(summaries)}")
+        runtime.io.echo(_tr(runtime, "label.targets", value=len(summaries)))
         for summary in summaries:
             _echo_target_summary(runtime, summary)
 
-    @target_app.command("list")
+    @target_app.command("list", help=_t(language, "target.list.help"))
     def target_list_command() -> None:
         runtime = runtime_factory()
         config = _require_config(runtime)
@@ -234,10 +237,10 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
         for summary in summaries:
             _echo_target_registry(runtime, summary)
 
-    @target_app.command("add")
+    @target_app.command("add", help=_t(language, "target.add.help"))
     def target_add_command(
-        name: str = typer.Option(..., "--name", help="Target name."),
-        path: str = typer.Option(..., "--path", help="Target directory path."),
+        name: str = typer.Option(..., "--name", help=_t(language, "option.name")),
+        path: str = typer.Option(..., "--path", help=_t(language, "option.path")),
     ) -> None:
         runtime = runtime_factory()
         config = _require_config(runtime)
@@ -247,18 +250,18 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
             saved_path = save_config(runtime.config_root, updated)
         except ValueError as exc:
             _exit_with_error(runtime, exc)
-        runtime.io.echo(f"Saved configuration to {saved_path}")
+        runtime.io.echo(_tr(runtime, "saved.config", path=saved_path))
 
-    @target_app.command("update")
+    @target_app.command("update", help=_t(language, "target.update.help"))
     def target_update_command(
-        name: str = typer.Option(..., "--name", help="Existing target name."),
-        new_name: str | None = typer.Option(None, "--new-name", help="New target name."),
-        path: str | None = typer.Option(None, "--path", help="New target directory path."),
+        name: str = typer.Option(..., "--name", help=_t(language, "option.existing_name")),
+        new_name: str | None = typer.Option(None, "--new-name", help=_t(language, "option.new_name")),
+        path: str | None = typer.Option(None, "--path", help=_t(language, "option.path")),
     ) -> None:
         runtime = runtime_factory()
         config = _require_config(runtime)
         if new_name is None and path is None:
-            runtime.io.error("at least one of --new-name or --path is required")
+            runtime.io.error(_tr(runtime, "error.target_update_required"))
             raise typer.Exit(code=1)
 
         new_path = Path(_normalize_path_text(path)).expanduser() if path is not None else None
@@ -269,11 +272,11 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
             saved_path = save_config(runtime.config_root, updated)
         except ValueError as exc:
             _exit_with_error(runtime, exc)
-        runtime.io.echo(f"Saved configuration to {saved_path}")
+        runtime.io.echo(_tr(runtime, "saved.config", path=saved_path))
 
-    @target_app.command("remove")
+    @target_app.command("remove", help=_t(language, "target.remove.help"))
     def target_remove_command(
-        name: str = typer.Option(..., "--name", help="Target name."),
+        name: str = typer.Option(..., "--name", help=_t(language, "option.name")),
     ) -> None:
         runtime = runtime_factory()
         config = _require_config(runtime)
@@ -282,7 +285,7 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
             saved_path = save_config(runtime.config_root, updated)
         except ValueError as exc:
             _exit_with_error(runtime, exc)
-        runtime.io.echo(f"Saved configuration to {saved_path}")
+        runtime.io.echo(_tr(runtime, "saved.config", path=saved_path))
 
     return app
 
@@ -294,7 +297,7 @@ def main() -> None:
 def _require_config(runtime: PluginRuntime) -> SkillLinkConfig:
     config = load_config(runtime.config_root)
     if config is None:
-        runtime.io.warn("skills-link is not configured. Starting init.")
+        runtime.io.warn(_tr(runtime, "warning.not_configured"))
         config = _run_init(runtime)
     return config
 
@@ -311,14 +314,14 @@ def _run_init(runtime: PluginRuntime) -> SkillLinkConfig:
         targets=[TargetConfig(name=target_name, path=target_path)],
     )
     path = save_config(runtime.config_root, config)
-    runtime.io.echo(f"Saved configuration to {path}")
+    runtime.io.echo(_tr(runtime, "saved.config", path=path))
     return config
 
 
 def _prompt_for_source_dir(runtime: PluginRuntime, default: Path | None) -> Path:
     while True:
         value = runtime.io.prompt_text(
-            "Source skills directory",
+            _tr(runtime, "prompt.source_dir"),
             default=str(default) if default else None,
         )
         source_dir = Path(_normalize_path_text(value)).expanduser()
@@ -332,18 +335,18 @@ def _prompt_for_source_dir(runtime: PluginRuntime, default: Path | None) -> Path
 def _prompt_for_target_name(runtime: PluginRuntime, default: str | None) -> str:
     while True:
         value = runtime.io.prompt_text(
-            "Initial target name",
+            _tr(runtime, "prompt.target_name"),
             default=default,
         ).strip()
         if value:
             return value
-        runtime.io.error("target name is required")
+        runtime.io.error(_tr(runtime, "error.target_name_required"))
 
 
 def _prompt_for_target_path(runtime: PluginRuntime, default: Path | None) -> Path:
     while True:
         value = runtime.io.prompt_text(
-            "Initial target directory",
+            _tr(runtime, "prompt.target_path"),
             default=str(default) if default else None,
         )
         target_path = Path(_normalize_path_text(value)).expanduser()
@@ -359,7 +362,7 @@ def _prepare_target_path(runtime: PluginRuntime, target_path: Path) -> Path:
         return target_path
 
     should_create = runtime.io.confirm(
-        f"Create target directory {target_path}?",
+        _tr(runtime, "prompt.create_target", path=target_path),
         default=True,
     )
     if not should_create:
@@ -370,24 +373,25 @@ def _prepare_target_path(runtime: PluginRuntime, target_path: Path) -> Path:
 
 def _report_link_result(runtime: PluginRuntime, result: LinkResult) -> None:
     for item in result.linked:
-        runtime.io.echo(f"linked {item.skill_name} -> {item.target_name}")
+        runtime.io.echo(_tr(runtime, "result.linked", skill=item.skill_name, target=item.target_name))
     for item in result.conflicts:
-        runtime.io.error(f"conflict {item.skill_name} -> {item.target_name}; resolve it manually")
+        runtime.io.error(_tr(runtime, "result.conflict", skill=item.skill_name, target=item.target_name))
 
 
 def _report_unlink_result(runtime: PluginRuntime, result: UnlinkResult) -> None:
     for item in result.unlinked:
-        runtime.io.echo(f"unlinked {item.skill_name} -> {item.target_name}")
+        runtime.io.echo(_tr(runtime, "result.unlinked", skill=item.skill_name, target=item.target_name))
     for item in result.skipped:
-        runtime.io.warn(f"skipped {item.skill_name} -> {item.target_name}; target is not a managed link")
+        runtime.io.warn(_tr(runtime, "result.skipped", skill=item.skill_name, target=item.target_name))
 
 
-def _format_skill_status(status: SkillStatus) -> str:
+def _format_skill_status(status: SkillStatus, runtime: PluginRuntime | None = None) -> str:
+    language = _runtime_language(runtime)
     if len(status.target_statuses) == 1:
-        return f"{status.name} [{status.target_statuses[0].status}]"
+        return f"{status.name} [{_status_text(status.target_statuses[0].status, language)}]"
 
     statuses = ", ".join(
-        f"{target.target_name}={target.status}"
+        translate(language, "status.multi", target=target.target_name, status=_status_text(target.status, language))
         for target in status.target_statuses
     )
     return f"{status.name} [{statuses}]"
@@ -395,21 +399,21 @@ def _format_skill_status(status: SkillStatus) -> str:
 
 def _echo_target_summary(runtime: PluginRuntime, summary: TargetSummary) -> None:
     runtime.io.echo(f"[{summary.name}]")
-    runtime.io.echo(f"path: {summary.path}")
-    runtime.io.echo(f"available: {_format_yes_no(summary.available)}")
-    runtime.io.echo(f"linked: {summary.linked}")
-    runtime.io.echo(f"not_linked: {summary.not_linked}")
-    runtime.io.echo(f"broken_link: {summary.broken_link}")
-    runtime.io.echo(f"conflict: {summary.conflict}")
+    runtime.io.echo(_tr(runtime, "label.path", value=summary.path))
+    runtime.io.echo(_tr(runtime, "label.available", value=_format_yes_no(summary.available, runtime)))
+    runtime.io.echo(_tr(runtime, "label.linked", value=summary.linked))
+    runtime.io.echo(_tr(runtime, "label.not_linked", value=summary.not_linked))
+    runtime.io.echo(_tr(runtime, "label.broken_link", value=summary.broken_link))
+    runtime.io.echo(_tr(runtime, "label.conflict", value=summary.conflict))
 
 
 def _echo_target_registry(runtime: PluginRuntime, summary: TargetSummary) -> None:
     runtime.io.echo(f"[{summary.name}]")
-    runtime.io.echo(f"path: {summary.path}")
-    runtime.io.echo(f"available: {_format_yes_no(summary.available)}")
-    runtime.io.echo(f"managed_links: {summary.managed_links}")
-    runtime.io.echo(f"conflicts: {summary.conflict}")
-    runtime.io.echo(f"broken_links: {summary.broken_link}")
+    runtime.io.echo(_tr(runtime, "label.path", value=summary.path))
+    runtime.io.echo(_tr(runtime, "label.available", value=_format_yes_no(summary.available, runtime)))
+    runtime.io.echo(_tr(runtime, "label.managed_links", value=summary.managed_links))
+    runtime.io.echo(_tr(runtime, "label.conflicts", value=summary.conflict))
+    runtime.io.echo(_tr(runtime, "label.broken_links", value=summary.broken_link))
 
 
 def _load_target_summaries(
@@ -478,5 +482,26 @@ def _exit_with_error(runtime: PluginRuntime, exc: ValueError) -> None:
     raise typer.Exit(code=1) from exc
 
 
-def _format_yes_no(value: bool) -> str:
-    return "yes" if value else "no"
+def _format_yes_no(value: bool, runtime: PluginRuntime | None = None) -> str:
+    language = _runtime_language(runtime)
+    return translate(language, "yes" if value else "no")
+
+
+def _runtime_language(runtime: PluginRuntime | None) -> str:
+    if runtime is not None and hasattr(runtime, "language"):
+        return getattr(runtime, "language")
+    if runtime is not None:
+        return resolve_language(runtime.config_root)
+    return resolve_language(Path(os.environ.get("AGENT_KIT_CONFIG_DIR", "~/.config/agent-kit")).expanduser())
+
+
+def _tr(runtime: PluginRuntime, key: str, **kwargs: object) -> str:
+    return translate(_runtime_language(runtime), key, **kwargs)
+
+
+def _t(language: str, key: str, **kwargs: object) -> str:
+    return translate(language, key, **kwargs)
+
+
+def _status_text(status: str, language: str) -> str:
+    return translate(language, f"status.{status}")

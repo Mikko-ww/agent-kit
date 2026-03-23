@@ -23,6 +23,8 @@
 对应实现入口：
 
 - [src/skills_link/plugin_cli.py](src/skills_link/plugin_cli.py)
+- [src/skills_link/messages.py](src/skills_link/messages.py)
+- [src/skills_link/locale.py](src/skills_link/locale.py)
 
 ## 3. 配置
 
@@ -72,6 +74,7 @@
 - `unlink` 是否按 `(skill, target)` 粒度只删除受管软链接
 - `status` 是否按 target 维度正确汇总 source/target 可用性和状态计数
 - `--target` 过滤是否正确处理单个、多值和未知 target name
+- 中英文下的 `--help`、初始化提示、warning/error、状态输出是否保持一致
 
 相关测试：
 

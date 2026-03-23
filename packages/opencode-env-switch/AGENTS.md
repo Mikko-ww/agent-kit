@@ -22,6 +22,8 @@
 对应实现入口：
 
 - [src/opencode_env_switch/plugin_cli.py](src/opencode_env_switch/plugin_cli.py)
+- [src/opencode_env_switch/messages.py](src/opencode_env_switch/messages.py)
+- [src/opencode_env_switch/locale.py](src/opencode_env_switch/locale.py)
 
 ## 3. 配置
 
@@ -76,6 +78,7 @@
 - `switch` 是否正确更新 `active_profile` 并输出完整 `export`/`unset`
 - `export` 是否输出可直接用于 zsh 的 shell 片段
 - `status` 是否正确反映 zsh 接入状态、受管文件状态和 profile 路径有效性
+- 中英文下的 `--help`、profile 提示、warning/error、状态输出是否保持一致
 
 相关测试：
 

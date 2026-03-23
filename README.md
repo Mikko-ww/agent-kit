@@ -54,10 +54,41 @@ agent-kit plugins install <plugin-id>
 agent-kit plugins list
 agent-kit plugins info skills-link
 agent-kit plugins install skills-link
+agent-kit config get language
+agent-kit config set language zh-CN
 agent-kit skills-link status
 agent-kit plugins info opencode-env-switch
 agent-kit opencode-env-switch status
 ```
+
+## CLI 多语言
+
+`agent-kit` 与第一方插件当前支持 `en` 和 `zh-CN`，默认语言是英文。
+
+语言决议顺序固定为：
+
+1. `AGENT_KIT_LANG`
+2. `~/.config/agent-kit/config.jsonc` 中的 `language`
+3. 系统语言环境变量 `LC_ALL` / `LC_MESSAGES` / `LANG`
+4. 英文默认值 `en`
+
+可用命令：
+
+```bash
+agent-kit config get language
+agent-kit config set language auto
+agent-kit config set language en
+agent-kit config set language zh-CN
+```
+
+单次运行也可以直接覆盖：
+
+```bash
+AGENT_KIT_LANG=zh-CN agent-kit --help
+AGENT_KIT_LANG=en agent-kit skills-link --help
+```
+
+如果系统语言不是当前支持的语言，CLI 会自动回退到英文。插件通过 `agent-kit <plugin-id> ...` 启动时，会自动遵从 core 透传的最终语言。
 
 ## 本地开发环境
 

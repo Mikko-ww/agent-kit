@@ -58,6 +58,15 @@ agent-kit opencode-env-switch export --name work --shell zsh
 agent-kit opencode-env-switch status
 ```
 
+## CLI 语言
+
+`opencode-env-switch` 的帮助文案、交互提示、warning/error 和状态输出都会遵从 `agent-kit` 的全局语言策略。
+
+- 默认语言是英文
+- 支持 `en` 与 `zh-CN`
+- 通过 `agent-kit opencode-env-switch ...` 运行时，语言由 core 决议后透传
+- 直接运行插件入口时，也会按 `AGENT_KIT_LANG`、全局 `language` 配置、系统语言、英文默认值的顺序回退
+
 ## 行为约束
 
 - v1 只支持 zsh，不处理 bash/fish

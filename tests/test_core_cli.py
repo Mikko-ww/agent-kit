@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -109,3 +110,60 @@ def test_plugins_info_shows_installed_and_available_versions():
     assert "available_version: 0.2.0" in result.output
     assert "installed_version: 0.1.0" in result.output
     assert "config_path: /tmp/config.jsonc" in result.output
+
+
+def test_help_uses_zh_cn_when_config_requests_it(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    cli = require_module("agent_kit.cli")
+    config_root = tmp_path / "config"
+    config_root.mkdir(parents=True)
+    (config_root / "config.jsonc").write_text(
+        json.dumps({"language": "zh-CN"}, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("AGENT_KIT_CONFIG_DIR", str(config_root))
+    manager = SimpleNamespace(
+        runnable_plugins=lambda: [],
+        broken_plugins=lambda: [],
+    )
+
+    app = cli.create_app(manager_factory=lambda: manager)
+    result = CliRunner().invoke(app, ["--help"])
+
+    assert result.exit_code == 0
+    assert "官方插件管理与执行 CLI。" in result.output
+    assert "管理官方插件。" in result.output
+
+
+def test_config_set_and_get_language(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    cli = require_module("agent_kit.cli")
+    config_root = tmp_path / "config"
+    monkeypatch.setenv("AGENT_KIT_CONFIG_DIR", str(config_root))
+    manager = SimpleNamespace(
+        runnable_plugins=lambda: [],
+        broken_plugins=lambda: [],
+    )
+    app = cli.create_app(manager_factory=lambda: manager)
+    runner = CliRunner()
+
+    set_result = runner.invoke(app, ["config", "set", "language", "zh-CN"])
+    get_result = runner.invoke(app, ["config", "get", "language"])
+
+    assert set_result.exit_code == 0
+    assert get_result.exit_code == 0
+    assert "zh-CN" in get_result.output
+    assert '"language": "zh-CN"' in (config_root / "config.jsonc").read_text(encoding="utf-8")
+
+
+def test_config_set_language_rejects_invalid_values(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    cli = require_module("agent_kit.cli")
+    monkeypatch.setenv("AGENT_KIT_CONFIG_DIR", str(tmp_path / "config"))
+    manager = SimpleNamespace(
+        runnable_plugins=lambda: [],
+        broken_plugins=lambda: [],
+    )
+
+    app = cli.create_app(manager_factory=lambda: manager)
+    result = CliRunner().invoke(app, ["config", "set", "language", "fr"])
+
+    assert result.exit_code == 1
+    assert "Supported values: auto, en, zh-CN" in result.output
