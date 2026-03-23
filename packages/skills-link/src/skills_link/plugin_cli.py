@@ -242,7 +242,7 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
         runtime = runtime_factory()
         config = _require_config(runtime)
         try:
-            target_path = _prepare_target_path(runtime, Path(path).expanduser())
+            target_path = _prepare_target_path(runtime, Path(_normalize_path_text(path)).expanduser())
             updated = add_target(config, TargetConfig(name=name, path=target_path))
             saved_path = save_config(runtime.config_root, updated)
         except ValueError as exc:
@@ -261,7 +261,7 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
             runtime.io.error("at least one of --new-name or --path is required")
             raise typer.Exit(code=1)
 
-        new_path = Path(path).expanduser() if path is not None else None
+        new_path = Path(_normalize_path_text(path)).expanduser() if path is not None else None
         try:
             updated = update_target(config, name, new_name=new_name, new_path=new_path)
             if new_path is not None:
@@ -321,7 +321,7 @@ def _prompt_for_source_dir(runtime: PluginRuntime, default: Path | None) -> Path
             "Source skills directory",
             default=str(default) if default else None,
         )
-        source_dir = Path(value).expanduser()
+        source_dir = Path(_normalize_path_text(value)).expanduser()
         try:
             validate_source_dir(source_dir)
             return source_dir
@@ -346,7 +346,7 @@ def _prompt_for_target_path(runtime: PluginRuntime, default: Path | None) -> Pat
             "Initial target directory",
             default=str(default) if default else None,
         )
-        target_path = Path(value).expanduser()
+        target_path = Path(_normalize_path_text(value)).expanduser()
         try:
             return _prepare_target_path(runtime, target_path)
         except ValueError as exc:
@@ -464,6 +464,13 @@ def _target_names_or_none(target_names: Sequence[str]) -> list[str] | None:
     if not target_names:
         return None
     return list(target_names)
+
+
+def _normalize_path_text(value: str) -> str:
+    normalized = value.strip()
+    if len(normalized) >= 2 and normalized[0] == normalized[-1] and normalized[0] in {"'", '"'}:
+        return normalized[1:-1]
+    return normalized
 
 
 def _exit_with_error(runtime: PluginRuntime, exc: ValueError) -> None:
