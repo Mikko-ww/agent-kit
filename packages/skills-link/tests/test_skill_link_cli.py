@@ -116,6 +116,24 @@ def test_list_auto_runs_init_when_not_configured_and_writes_multi_target_config(
     assert target_dir.exists()
 
 
+def test_list_auto_runs_init_when_paths_are_wrapped_in_quotes(tmp_path: Path):
+    source_dir = tmp_path / "skills"
+    target_dir = tmp_path / "codex"
+    source_dir.mkdir()
+    write_skill(source_dir, "alpha")
+    io = FakeIO(
+        text_answers=[f'"{source_dir}"', "codex", f"'{target_dir}'"],
+        confirm_answers=[True],
+    )
+    app = build_app(tmp_path, io)
+
+    result = CliRunner().invoke(app, ["list"])
+
+    assert result.exit_code == 0
+    assert "alpha [not_linked]" in result.output
+    assert target_dir.exists()
+
+
 def test_link_status_and_unlink_commands_support_multiple_targets(tmp_path: Path):
     source_dir = tmp_path / "skills"
     codex_dir = tmp_path / "codex"
