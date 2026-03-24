@@ -53,6 +53,7 @@ def _build_repo(tmp_path: Path) -> Path:
     }
     _write_json(repo_root / "registry" / "official.json", registry_payload)
     _write_json(repo_root / "src" / "agent_kit" / "official_registry.json", registry_payload)
+    repo_root.joinpath("uv.lock").write_text('[[package]]\nname = "skills-link"\nversion = "0.1.0"\n', encoding="utf-8")
     return repo_root
 
 
@@ -80,11 +81,32 @@ def _git_runner(clean: bool = True, tag_exists: bool = False):
     return commands, run
 
 
+def _command_runner(lock_content: str | None = None, *, fail: bool = False):
+    commands: list[list[str]] = []
+
+    def run(args: list[str], *, cwd: Path, capture_output: bool = True, text: bool = True):
+        commands.append(list(args))
+        if args == ["uv", "lock"]:
+            if fail:
+                return type("Result", (), {"returncode": 1, "stdout": "", "stderr": "lock failed"})()
+            if lock_content is not None:
+                cwd.joinpath("uv.lock").write_text(lock_content, encoding="utf-8")
+            return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+        raise AssertionError(f"unexpected command: {args}")
+
+    return commands, run
+
+
 def test_release_plugin_patch_updates_versions_registry_and_git_tag(tmp_path: Path):
     release_module = require_module("agent_kit.release_plugin")
     repo_root = _build_repo(tmp_path)
     commands, git_runner = _git_runner()
-    releaser = release_module.PluginReleaseTool(repo_root=repo_root, git_runner=git_runner)
+    command_calls, command_runner = _command_runner(lock_content='[[package]]\nname = "skills-link"\nversion = "0.1.1"\n')
+    releaser = release_module.PluginReleaseTool(
+        repo_root=repo_root,
+        git_runner=git_runner,
+        command_runner=command_runner,
+    )
 
     result = releaser.release("skills-link", "patch")
 
@@ -108,6 +130,8 @@ def test_release_plugin_patch_updates_versions_registry_and_git_tag(tmp_path: Pa
 
     assert ["git", "commit", "-m", "发布 skills-link v0.1.1"] in commands
     assert ["git", "tag", "skills-link-v0.1.1"] in commands
+    assert command_calls == [["uv", "lock"]]
+    assert ["git", "add", "packages/skills-link/pyproject.toml", "packages/skills-link/src/skills_link/__init__.py", "registry/official.json", "src/agent_kit/official_registry.json", "uv.lock"] in commands
 
 
 @pytest.mark.parametrize("bump, expected", [("minor", "0.2.0"), ("major", "1.0.0")])
@@ -115,7 +139,12 @@ def test_release_plugin_supports_minor_and_major_bumps(tmp_path: Path, bump: str
     release_module = require_module("agent_kit.release_plugin")
     repo_root = _build_repo(tmp_path)
     _, git_runner = _git_runner()
-    releaser = release_module.PluginReleaseTool(repo_root=repo_root, git_runner=git_runner)
+    _, command_runner = _command_runner()
+    releaser = release_module.PluginReleaseTool(
+        repo_root=repo_root,
+        git_runner=git_runner,
+        command_runner=command_runner,
+    )
 
     result = releaser.release("skills-link", bump)
 
@@ -153,3 +182,20 @@ def test_release_plugin_rejects_missing_registry_entry(tmp_path: Path):
 
     with pytest.raises(release_module.ReleaseError, match="官方注册表中不存在插件"):
         releaser.release("skills-link", "patch")
+
+
+def test_release_plugin_stops_when_uv_lock_fails(tmp_path: Path):
+    release_module = require_module("agent_kit.release_plugin")
+    repo_root = _build_repo(tmp_path)
+    commands, git_runner = _git_runner()
+    _, command_runner = _command_runner(fail=True)
+    releaser = release_module.PluginReleaseTool(
+        repo_root=repo_root,
+        git_runner=git_runner,
+        command_runner=command_runner,
+    )
+
+    with pytest.raises(release_module.ReleaseError, match="uv lock 执行失败"):
+        releaser.release("skills-link", "patch")
+
+    assert ["git", "commit", "-m", "发布 skills-link v0.1.1"] not in commands

@@ -28,9 +28,11 @@ class PluginReleaseTool:
         *,
         repo_root: Path,
         git_runner=None,
+        command_runner=None,
     ) -> None:
         self.repo_root = repo_root.resolve()
         self.git_runner = git_runner or self._run_git
+        self.command_runner = command_runner or self._run_command
 
     def release(self, plugin_id: str, version_bump: str) -> ReleaseResult:
         self._ensure_clean_worktree()
@@ -77,12 +79,16 @@ class PluginReleaseTool:
         )
         for registry_path in registry_paths:
             self._update_registry(registry_path, plugin_id, new_version, tag_name)
+        self._run_uv_lock()
 
         tracked_files = [
             pyproject_path,
             module_init_path,
             *registry_paths,
         ]
+        uv_lock_path = self.repo_root / "uv.lock"
+        if uv_lock_path.exists():
+            tracked_files.append(uv_lock_path)
         self._git(["git", "add", *[str(path.relative_to(self.repo_root)) for path in tracked_files]])
         self._git(["git", "commit", "-m", commit_message])
         self._git(["git", "tag", tag_name])
@@ -171,6 +177,17 @@ class PluginReleaseTool:
             raise ReleaseError(f"缺少官方注册表文件: {registry_path.relative_to(self.repo_root)}")
         return json.loads(registry_path.read_text(encoding="utf-8"))
 
+    def _run_uv_lock(self) -> None:
+        result = self.command_runner(
+            ["uv", "lock"],
+            cwd=self.repo_root,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            stderr = result.stderr.strip() if getattr(result, "stderr", "") else "未知命令错误"
+            raise ReleaseError(f"uv lock 执行失败: {stderr}")
+
     def _git(self, args: list[str]) -> subprocess.CompletedProcess[str]:
         result = self.git_runner(args, capture_output=True, text=True)
         if result.returncode != 0:
@@ -182,6 +199,22 @@ class PluginReleaseTool:
         return subprocess.run(
             args,
             cwd=self.repo_root,
+            capture_output=capture_output,
+            text=text,
+            check=False,
+        )
+
+    def _run_command(
+        self,
+        args: list[str],
+        *,
+        cwd: Path,
+        capture_output: bool = True,
+        text: bool = True,
+    ):
+        return subprocess.run(
+            args,
+            cwd=cwd,
             capture_output=capture_output,
             text=text,
             check=False,

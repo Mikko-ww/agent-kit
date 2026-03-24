@@ -154,6 +154,7 @@ uv run python scripts/release/release_plugin.py <plugin-id> major
 - 只处理单个官方插件
 - 参数缺失或错误时，会直接输出用法、可用插件和可用版本类型提示
 - 自动更新插件版本号
+- 自动执行 `uv lock`，并在有变化时把 `uv.lock` 纳入同一次发布提交
 - 自动同步两个官方 registry 副本中的 `version` 与 `tag`
 - 自动创建中文提交和本地插件级 tag
 - 不自动 push，不创建 PR 或 GitHub Release
