@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
 import subprocess
+import urllib.parse
+import urllib.request
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,6 +16,7 @@ from packaging.version import Version
 
 from agent_kit import __version__ as CORE_VERSION
 from agent_kit.jsonc import load_jsonc
+from agent_kit.locale import resolve_language
 from agent_kit.paths import AgentKitLayout
 from agent_kit.registry import RegistryPlugin, RegistryStore
 
@@ -28,6 +32,7 @@ class InstalledPluginRecord:
     latest_known_version: str
     source_type: str
     source_ref: str
+    source_sha256: str | None
     api_version: int
     config_version: int
     venv_path: str
@@ -42,6 +47,7 @@ class InstalledPluginRecord:
             latest_known_version=str(data["latest_known_version"]),
             source_type=str(data["source_type"]),
             source_ref=str(data["source_ref"]),
+            source_sha256=_optional_str(data.get("source_sha256")),
             api_version=int(data["api_version"]),
             config_version=int(data["config_version"]),
             venv_path=str(data["venv_path"]),
@@ -90,6 +96,8 @@ class PluginManager:
         self.registry_store = registry_store
         self.command_runner = command_runner or self._run_command
         self.now_factory = now_factory or (lambda: datetime.now(timezone.utc))
+        self.download_artifact = self._download_artifact
+        self.hash_artifact = self._hash_artifact
 
     @classmethod
     def from_defaults(cls) -> "PluginManager":
@@ -114,7 +122,8 @@ class PluginManager:
 
         try:
             self._create_plugin_environment(plugin_id)
-            self._install_distribution(plugin_id, entry)
+            install_target = self._resolve_install_target(entry)
+            self._install_distribution(plugin_id, install_target)
             runtime_metadata = self.probe_plugin_metadata(plugin_id)
             distribution_metadata = self.probe_distribution_metadata(entry)
             self._verify_installation(entry, runtime_metadata, distribution_metadata)
@@ -123,7 +132,8 @@ class PluginManager:
                 installed_version=str(runtime_metadata["installed_version"]),
                 latest_known_version=entry.version,
                 source_type=entry.source_type,
-                source_ref=entry.install_spec(),
+                source_ref=self._source_ref(entry),
+                source_sha256=entry.sha256 if entry.source_type == "wheel" else None,
                 api_version=int(runtime_metadata["api_version"]),
                 config_version=int(runtime_metadata["config_version"]),
                 venv_path=str(self.layout.plugin_venv_dir(plugin_id)),
@@ -275,7 +285,7 @@ class PluginManager:
             text=True,
         )
 
-    def _install_distribution(self, plugin_id: str, entry: RegistryPlugin) -> None:
+    def _install_distribution(self, plugin_id: str, install_target: str) -> None:
         self.command_runner(
             [
                 "uv",
@@ -283,11 +293,42 @@ class PluginManager:
                 "install",
                 "--python",
                 str(self.layout.plugin_python_path(plugin_id)),
-                entry.install_spec(),
+                install_target,
             ],
             capture_output=True,
             text=True,
         )
+
+    def _resolve_install_target(self, entry: RegistryPlugin) -> str:
+        if entry.source_type != "wheel":
+            return entry.install_spec()
+        artifact_path = self._prepare_wheel_artifact(entry)
+        return str(artifact_path)
+
+    def _prepare_wheel_artifact(self, entry: RegistryPlugin) -> Path:
+        if not entry.wheel_url or not entry.sha256:
+            raise PluginError(f"missing wheel source for {entry.plugin_id}")
+
+        artifact_name = self._artifact_filename(entry.wheel_url)
+        artifact_path = self.layout.plugin_artifact_path(entry.plugin_id, artifact_name)
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if artifact_path.exists():
+            cached_hash = self.hash_artifact(artifact_path)
+            if cached_hash == entry.sha256:
+                return artifact_path
+
+        downloaded_path = self.download_artifact(entry.wheel_url, artifact_path)
+        actual_hash = self.hash_artifact(downloaded_path)
+        if actual_hash != entry.sha256:
+            downloaded_path.unlink(missing_ok=True)
+            raise PluginError(f"artifact hash mismatch for {entry.plugin_id}")
+        return downloaded_path
+
+    def _source_ref(self, entry: RegistryPlugin) -> str:
+        if entry.source_type == "wheel" and entry.wheel_url:
+            return entry.wheel_url
+        return entry.install_spec()
 
     def _verify_installation(
         self,
@@ -306,8 +347,7 @@ class PluginManager:
         if entry.source_type == "git":
             direct_url = distribution_metadata.get("direct_url") or {}
             url = direct_url.get("url")
-            commit_id = ((direct_url.get("vcs_info") or {}).get("commit_id"))
-            if url != entry.git_url or commit_id != entry.commit:
+            if url != entry.git_url:
                 raise PluginError(f"distribution metadata mismatch for {entry.plugin_id}")
 
     def _write_record(self, record: InstalledPluginRecord) -> None:
@@ -345,6 +385,7 @@ class PluginManager:
         env["AGENT_KIT_DATA_DIR"] = str(self.layout.data_root)
         env["AGENT_KIT_CACHE_DIR"] = str(self.layout.cache_root)
         env["AGENT_KIT_PLUGIN_ID"] = plugin_id
+        env["AGENT_KIT_LANG"] = resolve_language(config_path=self.layout.global_config_path).code
         return env
 
     def _ensure_core_compatible(self, entry: RegistryPlugin) -> None:
@@ -352,6 +393,29 @@ class PluginManager:
             raise PluginError(
                 f"plugin {entry.plugin_id} requires agent-kit>={entry.min_core_version}"
             )
+
+    def _download_artifact(self, url: str, destination: Path) -> Path:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with urllib.request.urlopen(url) as response:
+            destination.write_bytes(response.read())
+        return destination
+
+    def _hash_artifact(self, path: Path) -> str:
+        hasher = hashlib.sha256()
+        with path.open("rb") as handle:
+            while True:
+                chunk = handle.read(1024 * 1024)
+                if not chunk:
+                    break
+                hasher.update(chunk)
+        return hasher.hexdigest()
+
+    def _artifact_filename(self, url: str) -> str:
+        parsed = urllib.parse.urlparse(url)
+        filename = Path(parsed.path).name
+        if not filename or not filename.endswith(".whl"):
+            raise PluginError(f"invalid wheel artifact url: {url}")
+        return filename
 
     def _run_command(self, *args, **kwargs) -> subprocess.CompletedProcess[str]:
         result = subprocess.run(*args, **kwargs, check=False)
@@ -364,3 +428,9 @@ class PluginManager:
         if result.returncode != 0:
             stderr = result.stderr.strip() if result.stderr else "unknown command failure"
             raise PluginError(stderr)
+
+
+def _optional_str(value: object | None) -> str | None:
+    if value is None:
+        return None
+    return str(value)

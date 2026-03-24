@@ -1,6 +1,6 @@
 [project]
-name = "agent-kit-skill-link"
-version = "0.1.0"
+name = "skills-link"
+version = "0.2.0"
 description = "Skill linking toolkit for agent-kit."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -10,7 +10,7 @@ dependencies = [
 ]
 
 [project.scripts]
-agent-kit-plugin = "agent_kit_skill_link.plugin_cli:main"
+agent-kit-plugin = "skills_link.plugin_cli:main"
 
 [build-system]
 requires = ["hatchling>=1.27,<2.0"]

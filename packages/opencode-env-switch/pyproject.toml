@@ -1,0 +1,17 @@
+[project]
+name = "opencode-env-switch"
+version = "0.2.0"
+description = "OpenCode profile switching toolkit for agent-kit."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "questionary>=2.0,<3.0",
+    "typer>=0.12,<1.0",
+]
+
+[project.scripts]
+agent-kit-plugin = "opencode_env_switch.plugin_cli:main"
+
+[build-system]
+requires = ["hatchling>=1.27,<2.0"]
+build-backend = "hatchling.build"
