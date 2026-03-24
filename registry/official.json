@@ -9,8 +9,8 @@
       "package_name": "opencode-env-switch",
       "git_url": "https://github.com/Mikko-ww/agent-kit.git",
       "subdirectory": "packages/opencode-env-switch",
-      "version": "0.1.0",
-      "tag": "opencode-env-switch-v0.1.0",
+      "version": "0.2.0",
+      "tag": "opencode-env-switch-v0.2.0",
       "api_version": 1,
       "min_core_version": "0.1.0"
     },
