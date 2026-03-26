@@ -772,3 +772,73 @@ def test_run_plugin_preserves_plugin_stdout_for_nonzero_exit(tmp_path: Path):
 
     assert result.returncode == 2
     assert "Usage: agent-kit-plugin init" in result.stdout
+
+
+def test_run_plugin_does_not_capture_stdio_for_runtime_commands(tmp_path: Path):
+    from types import SimpleNamespace
+
+    paths_module = require_module("agent_kit.paths")
+    registry_module = require_module("agent_kit.registry")
+    manager_module = require_module("agent_kit.plugin_manager")
+    layout = make_layout(paths_module, tmp_path)
+    store = make_store(
+        registry_module,
+        layout,
+        {
+            "opencode-env-switch": {
+                "plugin_id": "opencode-env-switch",
+                "display_name": "OpenCode Env Switch",
+                "description": "plugin",
+                "source_type": "pypi",
+                "package_name": "opencode-env-switch",
+                "version": "0.1.0",
+                "api_version": 1,
+                "min_core_version": "0.1.0",
+            }
+        },
+    )
+    executable = layout.plugin_executable_path("opencode-env-switch")
+    executable.parent.mkdir(parents=True, exist_ok=True)
+    executable.write_text("", encoding="utf-8")
+    layout.plugin_state_path("opencode-env-switch").parent.mkdir(parents=True, exist_ok=True)
+    layout.plugin_state_path("opencode-env-switch").write_text(
+        json.dumps(
+            {
+                "plugin_id": "opencode-env-switch",
+                "installed_version": "0.1.0",
+                "latest_known_version": "0.1.0",
+                "source_type": "pypi",
+                "source_ref": "opencode-env-switch==0.1.0",
+                "source_sha256": None,
+                "api_version": 1,
+                "config_version": 1,
+                "venv_path": str(layout.plugin_venv_dir("opencode-env-switch")),
+                "executable_path": str(executable),
+                "installed_at": "2026-03-26T00:00:00+00:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+    captured = {}
+
+    def runtime_command_runner(args, **kwargs):
+        captured["kwargs"] = kwargs
+        return SimpleNamespace(returncode=0, stdout=None, stderr=None)
+
+    manager = manager_module.PluginManager(
+        layout=layout,
+        registry_store=store,
+        command_runner=lambda *args, **kwargs: None,
+        runtime_command_runner=runtime_command_runner,
+    )
+    manager.probe_plugin_metadata = lambda plugin_id: {
+        "plugin_id": plugin_id,
+        "installed_version": "0.1.0",
+        "api_version": 1,
+        "config_version": 1,
+    }
+
+    manager.run_plugin("opencode-env-switch", ["init", "zsh"])
+
+    assert "capture_output" not in captured["kwargs"]
+    assert captured["kwargs"]["text"] is True

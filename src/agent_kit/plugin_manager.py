@@ -191,7 +191,6 @@ class PluginManager:
         return self.runtime_command_runner(
             [str(executable), *args],
             env=self._plugin_environment(plugin_id),
-            capture_output=True,
             text=True,
         )
 
