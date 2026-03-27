@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import typer
 from typer import Context
+from agent_kit import __version__
 from agent_kit.alias import disable_alias, enable_alias, get_alias_status
 from agent_kit.locale import SUPPORTED_LANGUAGES, load_config_language, resolve_language, save_config_language
 from agent_kit.messages import translate
@@ -20,6 +21,12 @@ GLOBAL_CONFIG_KEYS = {
 }
 
 
+def _version_callback(value: bool) -> None:
+    if value:
+        typer.echo(f"agent-kit {__version__}")
+        raise typer.Exit()
+
+
 def create_app(
     *,
     manager_factory=PluginManager.from_defaults,
@@ -35,6 +42,19 @@ def create_app(
         add_completion=False,
         epilog=_build_epilog(manager, language),
     )
+
+    @app.callback()
+    def _root_callback(
+        version: bool = typer.Option(
+            False,
+            "--version",
+            "-V",
+            help=_t(language, "app.version.help"),
+            callback=_version_callback,
+            is_eager=True,
+        ),
+    ) -> None:
+        return
 
     plugins_app = typer.Typer(help=_t(language, "plugins.help"), no_args_is_help=True, add_completion=False)
     config_app = typer.Typer(help=_t(language, "config.help"), no_args_is_help=True, add_completion=False)
