@@ -26,6 +26,7 @@ from opencode_env_switch.logic import (
     activate_profile,
     add_profile,
     create_profile_directory,
+    ensure_managed_profile_paths,
     get_profile,
     inspect_zsh_integration,
     install_or_update_zsh_integration,
@@ -117,10 +118,8 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
     )
     init_app = typer.Typer(help=_t(language, "init.help"), no_args_is_help=True)
     profile_app = typer.Typer(help=_t(language, "profile.help"), no_args_is_help=True)
-    wizard_app = typer.Typer(help=_t(language, "wizard.help"), no_args_is_help=True)
     app.add_typer(init_app, name="init")
     app.add_typer(profile_app, name="profile")
-    app.add_typer(wizard_app, name="wizard")
 
     @app.callback(invoke_without_command=True)
     def app_callback(
@@ -336,156 +335,72 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
     @app.command("status", help=_t(language, "status.help"))
     def status_command() -> None:
         runtime = runtime_factory()
-        config_path = runtime.config_root / "plugins" / PLUGIN_ID / "config.jsonc"
         loaded = load_config(runtime.config_root)
         config = loaded or default_config(runtime.config_root)
-        zsh_status = inspect_zsh_integration(config.shells.zsh)
+        _echo_status(runtime, config, loaded_exists=loaded is not None)
 
-        runtime.io.echo(_tr(runtime, "label.config_path", value=config_path))
-        runtime.io.echo(_tr(runtime, "label.config_exists", value=_format_yes_no(loaded is not None, runtime)))
-        runtime.io.echo(_tr(runtime, "label.active_profile", value=config.active_profile))
-        runtime.io.echo(_tr(runtime, "label.profiles", value=len(config.profiles)))
-        runtime.io.echo(_tr(runtime, "label.zsh_rc_file", value=config.shells.zsh.rc_file))
-        runtime.io.echo(_tr(runtime, "label.zsh_source_file", value=config.shells.zsh.source_file))
-        runtime.io.echo(_tr(runtime, "label.zsh_config_installed", value=_format_yes_no(config.shells.zsh.installed, runtime)))
-        runtime.io.echo(_tr(runtime, "label.zsh_block_present", value=_format_yes_no(zsh_status.block_present, runtime)))
-        runtime.io.echo(_tr(runtime, "label.zsh_source_exists", value=_format_yes_no(zsh_status.source_exists, runtime)))
-
-        for profile in config.profiles:
-            runtime.io.echo(f"[{profile.name}]")
-            runtime.io.echo(_tr(runtime, "label.active", value=_format_yes_no(profile.name == config.active_profile, runtime)))
-            runtime.io.echo(_tr(runtime, "label.description", value=profile.description or "-"))
-            statuses = profile_path_statuses(profile)
-            for key, status in statuses.items():
-                runtime.io.echo(_tr(runtime, "label.path_item", field=key, value=status.path or "-"))
-                runtime.io.echo(_tr(runtime, "label.path_validity", field=key, value=_format_optional_validity(status.valid, runtime)))
-
-    @wizard_app.command("default", help=_t(language, "wizard.help"))
+    @app.command("wizard", help=_t(language, "wizard.help"))
     def wizard_command() -> None:
         runtime = runtime_factory()
         runtime.io.echo(_tr(runtime, "wizard.welcome"))
         runtime.io.echo(_tr(runtime, "wizard.welcome_detail"))
         runtime.io.echo("")
 
-        do_init_zsh = runtime.io.confirm(
-            _tr(runtime, "wizard.prompt_init_zsh"),
-            default=True,
+        config = _load_or_default_config(runtime)
+        loaded_exists = load_config(runtime.config_root) is not None
+        action = runtime.io.select_one(
+            _tr(runtime, "wizard.menu.prompt"),
+            [
+                _tr(runtime, "wizard.menu.add_profile"),
+                _tr(runtime, "wizard.menu.update_profile"),
+                _tr(runtime, "wizard.menu.switch_profile"),
+                _tr(runtime, "wizard.menu.repair_zsh"),
+                _tr(runtime, "wizard.menu.show_status"),
+            ],
         )
 
-        do_create_profile = runtime.io.confirm(
-            _tr(runtime, "wizard.prompt_create_profile"),
-            default=True,
-        )
-
-        if not do_init_zsh and not do_create_profile:
-            runtime.io.echo(_tr(runtime, "wizard.skip_all"))
-            return
-
-        config = default_config(runtime.config_root, zsh_rc_file=runtime.default_zsh_rc_file)
-
-        if do_init_zsh:
-            write_shell_source_file(config.shells.zsh.source_file, render_zsh_env(None))
-            install_or_update_zsh_integration(config.shells.zsh.rc_file, config.shells.zsh.source_file)
-            config = set_zsh_installed(config, True)
-            runtime.io.echo(_tr(runtime, "result.installed_zsh", path=config.shells.zsh.rc_file))
-
-        profile_name = None
-        profile_description = None
-        profile_opencode_config = None
-        profile_tui_config = None
-        profile_config_dir = None
-
-        if do_create_profile:
-            while True:
-                name = runtime.io.prompt_text(_tr(runtime, "wizard.prompt_profile_name")).strip()
-                if name:
-                    profile_name = name
-                    break
-                runtime.io.error(_tr(runtime, "error.profile_name_required"))
-
-            description = runtime.io.prompt_text(
-                _tr(runtime, "wizard.prompt_profile_description"),
-                default="",
-            ).strip()
-            profile_description = description or None
-
-            auto_label = _tr(runtime, "prompt.path_mode.auto")
-            manual_label = _tr(runtime, "prompt.path_mode.manual")
-            path_mode = runtime.io.select_one(
-                _tr(runtime, "prompt.path_mode"),
-                [auto_label, manual_label],
+        try:
+            action_key = _resolve_choice_key(
+                action,
+                "wizard.menu.add_profile",
+                "wizard.menu.update_profile",
+                "wizard.menu.switch_profile",
+                "wizard.menu.repair_zsh",
+                "wizard.menu.show_status",
             )
 
-            if path_mode == auto_label:
-                base = profiles_base_path(runtime.config_root) / profile_name
-                runtime.io.echo(_tr(runtime, "wizard.auto_create_base_path", path=base))
-                do_oc = runtime.io.confirm(_tr(runtime, "prompt.auto_create_opencode_config"), default=True)
-                do_tc = runtime.io.confirm(_tr(runtime, "prompt.auto_create_tui_config"), default=True)
-                do_cd = runtime.io.confirm(_tr(runtime, "prompt.auto_create_config_dir"), default=True)
-                if do_oc or do_tc or do_cd:
-                    result = create_profile_directory(
-                        runtime.config_root,
-                        profile_name,
-                        create_opencode_config=do_oc,
-                        create_tui_config=do_tc,
-                        create_config_dir=do_cd,
-                    )
-                    runtime.io.echo(_tr(runtime, "result.auto_created_dir", path=base))
-                    profile_opencode_config = result.opencode_config
-                    profile_tui_config = result.tui_config
-                    profile_config_dir = result.config_dir
-            else:
-                opencode_config_path = runtime.io.prompt_text(
-                    _tr(runtime, "wizard.prompt_opencode_config"),
-                    default="",
-                ).strip()
-                if opencode_config_path:
-                    profile_opencode_config = _resolve_optional_file_path(opencode_config_path, key="opencode_config")
-
-                tui_config_path = runtime.io.prompt_text(
-                    _tr(runtime, "wizard.prompt_tui_config"),
-                    default="",
-                ).strip()
-                if tui_config_path:
-                    profile_tui_config = _resolve_optional_file_path(tui_config_path, key="tui_config")
-
-                config_dir_path = runtime.io.prompt_text(
-                    _tr(runtime, "wizard.prompt_config_dir"),
-                    default="",
-                ).strip()
-                if config_dir_path:
-                    profile_config_dir = _resolve_optional_dir_path(config_dir_path)
-
-            runtime.io.echo("")
-            runtime.io.echo(_tr(runtime, "wizard.confirm_summary"))
-            runtime.io.echo(_tr(runtime, "wizard.confirm_profile_name", name=profile_name))
-            runtime.io.echo(_tr(runtime, "wizard.confirm_profile_description", description=profile_description or "-"))
-            runtime.io.echo(_tr(runtime, "wizard.confirm_opencode_config", path=str(profile_opencode_config) if profile_opencode_config else "-"))
-            runtime.io.echo(_tr(runtime, "wizard.confirm_tui_config", path=str(profile_tui_config) if profile_tui_config else "-"))
-            runtime.io.echo(_tr(runtime, "wizard.confirm_config_dir", path=str(profile_config_dir) if profile_config_dir else "-"))
-
-            if not runtime.io.confirm(_tr(runtime, "wizard.confirm_save"), default=True):
-                runtime.io.echo(_tr(runtime, "wizard.skip_all"))
+            if action_key == "wizard.menu.add_profile":
+                config, profile_name = _wizard_add_profile(runtime, config)
+                saved_path = save_config(runtime.config_root, config)
+                runtime.io.echo(_tr(runtime, "saved.config", path=saved_path))
+                runtime.io.echo(_tr(runtime, "wizard.completed"))
+                runtime.io.echo(_tr(runtime, "wizard.completed_detail", name=profile_name))
                 return
 
-            profile = ProfileConfig(
-                name=profile_name,
-                description=profile_description,
-                opencode_config=profile_opencode_config,
-                tui_config=profile_tui_config,
-                config_dir=profile_config_dir,
-            )
-            config = add_profile(config, profile)
-            config = activate_profile(config, profile_name)
+            if action_key == "wizard.menu.update_profile":
+                config = _wizard_update_profile(runtime, config)
+                saved_path = save_config(runtime.config_root, config)
+                runtime.io.echo(_tr(runtime, "saved.config", path=saved_path))
+                runtime.io.echo(_tr(runtime, "wizard.completed"))
+                return
 
-        saved_path = save_config(runtime.config_root, config)
-        runtime.io.echo(_tr(runtime, "saved.config", path=saved_path))
+            if action_key == "wizard.menu.switch_profile":
+                config = _wizard_switch_profile(runtime, config)
+                saved_path = save_config(runtime.config_root, config)
+                runtime.io.echo(_tr(runtime, "saved.config", path=saved_path))
+                runtime.io.echo(_tr(runtime, "wizard.completed"))
+                return
 
-        if profile_name:
-            runtime.io.echo(_tr(runtime, "wizard.completed"))
-            runtime.io.echo(_tr(runtime, "wizard.completed_detail", name=profile_name))
-        else:
-            runtime.io.echo(_tr(runtime, "wizard.completed"))
+            if action_key == "wizard.menu.repair_zsh":
+                config = _wizard_repair_zsh(runtime, config)
+                saved_path = save_config(runtime.config_root, config)
+                runtime.io.echo(_tr(runtime, "saved.config", path=saved_path))
+                runtime.io.echo(_tr(runtime, "wizard.completed"))
+                return
+
+            _echo_status(runtime, config, loaded_exists=loaded_exists)
+        except ValueError as exc:
+            _exit_with_error(runtime, exc)
 
     return app
 
@@ -576,10 +491,11 @@ def _prompt_path_actions(
     runtime: PluginRuntime,
     profile_name: str,
 ) -> tuple[Path | None, Path | None, Path | None, Path | None]:
-    auto_label = _tr(runtime, "prompt.path_action.auto")
-    manual_label = _tr(runtime, "prompt.path_action.manual")
-    skip_label = _tr(runtime, "prompt.path_action.skip")
-    choices = [auto_label, manual_label, skip_label]
+    choices = [
+        _tr(runtime, "prompt.path_action.auto"),
+        _tr(runtime, "prompt.path_action.manual"),
+        _tr(runtime, "prompt.path_action.skip"),
+    ]
 
     auto_oc = False
     auto_tc = False
@@ -591,25 +507,43 @@ def _prompt_path_actions(
     action = runtime.io.select_one(
         _tr(runtime, "prompt.path_action", field="opencode_config"), choices,
     )
-    if action == auto_label:
+    action_key = _resolve_choice_key(
+        action,
+        "prompt.path_action.auto",
+        "prompt.path_action.manual",
+        "prompt.path_action.skip",
+    )
+    if action_key == "prompt.path_action.auto":
         auto_oc = True
-    elif action == manual_label:
+    elif action_key == "prompt.path_action.manual":
         oc = _prompt_optional_file_path(runtime, _tr(runtime, "prompt.opencode_config"))
 
     action = runtime.io.select_one(
         _tr(runtime, "prompt.path_action", field="tui_config"), choices,
     )
-    if action == auto_label:
+    action_key = _resolve_choice_key(
+        action,
+        "prompt.path_action.auto",
+        "prompt.path_action.manual",
+        "prompt.path_action.skip",
+    )
+    if action_key == "prompt.path_action.auto":
         auto_tc = True
-    elif action == manual_label:
+    elif action_key == "prompt.path_action.manual":
         tc = _prompt_optional_file_path(runtime, _tr(runtime, "prompt.tui_config"))
 
     action = runtime.io.select_one(
         _tr(runtime, "prompt.path_action", field="config_dir"), choices,
     )
-    if action == auto_label:
+    action_key = _resolve_choice_key(
+        action,
+        "prompt.path_action.auto",
+        "prompt.path_action.manual",
+        "prompt.path_action.skip",
+    )
+    if action_key == "prompt.path_action.auto":
         auto_cd = True
-    elif action == manual_label:
+    elif action_key == "prompt.path_action.manual":
         cd = _prompt_optional_dir_path(runtime, _tr(runtime, "prompt.config_dir"))
 
     created_dir: Path | None = None
@@ -628,6 +562,244 @@ def _prompt_path_actions(
         cd = cd or result.config_dir
 
     return oc, tc, cd, created_dir
+
+
+def _wizard_add_profile(
+    runtime: PluginRuntime,
+    config: OpencodeEnvSwitchConfig,
+) -> tuple[OpencodeEnvSwitchConfig, str]:
+    profile_name = _resolve_profile_name(runtime, None)
+    description = runtime.io.prompt_text(
+        _tr(runtime, "wizard.prompt_profile_description"),
+        default="",
+    ).strip() or None
+    opencode_config, tui_config, config_dir, created_dir = _wizard_collect_paths_for_add(
+        runtime,
+        profile_name,
+    )
+    try:
+        profile = ProfileConfig(
+            name=profile_name,
+            description=description,
+            opencode_config=opencode_config,
+            tui_config=tui_config,
+            config_dir=config_dir,
+        )
+        updated = add_profile(config, profile)
+    except ValueError:
+        if created_dir and created_dir.exists():
+            shutil.rmtree(created_dir)
+        raise
+    return updated, profile_name
+
+
+def _wizard_update_profile(
+    runtime: PluginRuntime,
+    config: OpencodeEnvSwitchConfig,
+) -> OpencodeEnvSwitchConfig:
+    if not config.profiles:
+        raise ValueError(_tr(runtime, "error.no_profiles_configured"))
+    selected_name = _select_profile_name(runtime, config)
+    current = get_profile(config, selected_name)
+    description = runtime.io.prompt_text(
+        _tr(runtime, "wizard.prompt_profile_description"),
+        default=current.description or "",
+    ).strip()
+    description_value = description or None
+
+    path_mode = runtime.io.select_one(
+        _tr(runtime, "prompt.path_mode"),
+        [
+            _tr(runtime, "wizard.path_mode.keep"),
+            _tr(runtime, "wizard.path_mode.auto"),
+            _tr(runtime, "wizard.path_mode.manual"),
+        ],
+    )
+    path_mode_key = _resolve_choice_key(
+        path_mode,
+        "wizard.path_mode.keep",
+        "wizard.path_mode.auto",
+        "wizard.path_mode.manual",
+    )
+    opencode_config = current.opencode_config
+    tui_config = current.tui_config
+    config_dir = current.config_dir
+
+    if path_mode_key == "wizard.path_mode.auto":
+        runtime.io.echo(
+            _tr(
+                runtime,
+                "wizard.auto_create_base_path",
+                path=profiles_base_path(runtime.config_root) / current.name,
+            )
+        )
+        result = ensure_managed_profile_paths(
+            runtime.config_root,
+            current.name,
+            create_opencode_config=runtime.io.confirm(_tr(runtime, "prompt.auto_create_opencode_config"), default=opencode_config is None),
+            create_tui_config=runtime.io.confirm(_tr(runtime, "prompt.auto_create_tui_config"), default=tui_config is None),
+            create_config_dir=runtime.io.confirm(_tr(runtime, "prompt.auto_create_config_dir"), default=config_dir is None),
+        )
+        opencode_config = result.opencode_config or opencode_config
+        tui_config = result.tui_config or tui_config
+        config_dir = result.config_dir or config_dir
+    elif path_mode_key == "wizard.path_mode.manual":
+        opencode_config = _wizard_prompt_existing_file(
+            runtime,
+            _tr(runtime, "wizard.prompt_opencode_config"),
+            current.opencode_config,
+            key="opencode_config",
+        )
+        tui_config = _wizard_prompt_existing_file(
+            runtime,
+            _tr(runtime, "wizard.prompt_tui_config"),
+            current.tui_config,
+            key="tui_config",
+        )
+        config_dir = _wizard_prompt_existing_dir(
+            runtime,
+            _tr(runtime, "wizard.prompt_config_dir"),
+            current.config_dir,
+        )
+
+    updated_profile = ProfileConfig(
+        name=current.name,
+        description=description_value,
+        opencode_config=opencode_config,
+        tui_config=tui_config,
+        config_dir=config_dir,
+    )
+    return update_profile(
+        config,
+        selected_name,
+        description=updated_profile.description,
+        opencode_config=updated_profile.opencode_config,
+        tui_config=updated_profile.tui_config,
+        config_dir=updated_profile.config_dir,
+    )
+
+
+def _wizard_switch_profile(
+    runtime: PluginRuntime,
+    config: OpencodeEnvSwitchConfig,
+) -> OpencodeEnvSwitchConfig:
+    if not config.profiles:
+        raise ValueError(_tr(runtime, "error.no_profiles_configured"))
+    selected_name = _select_profile_name(runtime, config)
+    profile = get_profile(config, selected_name)
+    validate_profile_paths(profile)
+    write_shell_source_file(config.shells.zsh.source_file, render_zsh_env(profile))
+    runtime.io.echo(_tr(runtime, "result.switched", name=selected_name))
+    return activate_profile(config, selected_name)
+
+
+def _wizard_repair_zsh(
+    runtime: PluginRuntime,
+    config: OpencodeEnvSwitchConfig,
+) -> OpencodeEnvSwitchConfig:
+    active_profile = _active_profile_or_none(config)
+    write_shell_source_file(config.shells.zsh.source_file, render_zsh_env(active_profile))
+    install_or_update_zsh_integration(config.shells.zsh.rc_file, config.shells.zsh.source_file)
+    runtime.io.echo(_tr(runtime, "result.installed_zsh", path=config.shells.zsh.rc_file))
+    return set_zsh_installed(config, True)
+
+
+def _wizard_collect_paths_for_add(
+    runtime: PluginRuntime,
+    profile_name: str,
+) -> tuple[Path | None, Path | None, Path | None, Path | None]:
+    path_mode = runtime.io.select_one(
+        _tr(runtime, "prompt.path_mode"),
+        [_tr(runtime, "prompt.path_mode.auto"), _tr(runtime, "prompt.path_mode.manual")],
+    )
+    path_mode_key = _resolve_choice_key(
+        path_mode,
+        "prompt.path_mode.auto",
+        "prompt.path_mode.manual",
+    )
+    if path_mode_key == "prompt.path_mode.auto":
+        base = profiles_base_path(runtime.config_root) / profile_name
+        runtime.io.echo(_tr(runtime, "wizard.auto_create_base_path", path=base))
+        do_oc = runtime.io.confirm(_tr(runtime, "prompt.auto_create_opencode_config"), default=True)
+        do_tc = runtime.io.confirm(_tr(runtime, "prompt.auto_create_tui_config"), default=True)
+        do_cd = runtime.io.confirm(_tr(runtime, "prompt.auto_create_config_dir"), default=True)
+        if do_oc or do_tc or do_cd:
+            result = create_profile_directory(
+                runtime.config_root,
+                profile_name,
+                create_opencode_config=do_oc,
+                create_tui_config=do_tc,
+                create_config_dir=do_cd,
+            )
+            runtime.io.echo(_tr(runtime, "result.auto_created_dir", path=base))
+            return result.opencode_config, result.tui_config, result.config_dir, base
+        return None, None, None, None
+
+    opencode_config_path = runtime.io.prompt_text(
+        _tr(runtime, "wizard.prompt_opencode_config"),
+        default="",
+    ).strip()
+    tui_config_path = runtime.io.prompt_text(
+        _tr(runtime, "wizard.prompt_tui_config"),
+        default="",
+    ).strip()
+    config_dir_path = runtime.io.prompt_text(
+        _tr(runtime, "wizard.prompt_config_dir"),
+        default="",
+    ).strip()
+    return (
+        _resolve_optional_file_path(opencode_config_path or None, key="opencode_config"),
+        _resolve_optional_file_path(tui_config_path or None, key="tui_config"),
+        _resolve_optional_dir_path(config_dir_path or None),
+        None,
+    )
+
+
+def _wizard_prompt_existing_file(
+    runtime: PluginRuntime,
+    label: str,
+    current: Path | None,
+    *,
+    key: str,
+) -> Path | None:
+    value = runtime.io.prompt_text(label, default=str(current) if current else "").strip()
+    return _resolve_optional_file_path(value or None, key=key) if value or current is None else current
+
+
+def _wizard_prompt_existing_dir(
+    runtime: PluginRuntime,
+    label: str,
+    current: Path | None,
+) -> Path | None:
+    value = runtime.io.prompt_text(label, default=str(current) if current else "").strip()
+    return _resolve_optional_dir_path(value or None) if value or current is None else current
+
+
+def _echo_status(
+    runtime: PluginRuntime,
+    config: OpencodeEnvSwitchConfig,
+    *,
+    loaded_exists: bool,
+) -> None:
+    config_path = runtime.config_root / "plugins" / PLUGIN_ID / "config.jsonc"
+    zsh_status = inspect_zsh_integration(config.shells.zsh)
+    runtime.io.echo(_tr(runtime, "label.config_path", value=config_path))
+    runtime.io.echo(_tr(runtime, "label.config_exists", value=_format_yes_no(loaded_exists, runtime)))
+    runtime.io.echo(_tr(runtime, "label.active_profile", value=config.active_profile))
+    runtime.io.echo(_tr(runtime, "label.profiles", value=len(config.profiles)))
+    runtime.io.echo(_tr(runtime, "label.zsh_rc_file", value=config.shells.zsh.rc_file))
+    runtime.io.echo(_tr(runtime, "label.zsh_source_file", value=config.shells.zsh.source_file))
+    runtime.io.echo(_tr(runtime, "label.zsh_config_installed", value=_format_yes_no(config.shells.zsh.installed, runtime)))
+    runtime.io.echo(_tr(runtime, "label.zsh_block_present", value=_format_yes_no(zsh_status.block_present, runtime)))
+    runtime.io.echo(_tr(runtime, "label.zsh_source_exists", value=_format_yes_no(zsh_status.source_exists, runtime)))
+    for profile in config.profiles:
+        runtime.io.echo(f"[{profile.name}]")
+        runtime.io.echo(_tr(runtime, "label.active", value=_format_yes_no(profile.name == config.active_profile, runtime)))
+        runtime.io.echo(_tr(runtime, "label.description", value=profile.description or "-"))
+        statuses = profile_path_statuses(profile)
+        for key, status in statuses.items():
+            runtime.io.echo(_tr(runtime, "label.path_item", field=key, value=status.path or "-"))
+            runtime.io.echo(_tr(runtime, "label.path_validity", field=key, value=_format_optional_validity(status.valid, runtime)))
 
 
 def _active_profile_or_none(config: OpencodeEnvSwitchConfig) -> ProfileConfig | None:
@@ -653,6 +825,14 @@ def _label_to_key(label: str) -> str:
     if "directory" in normalized:
         return "config_dir"
     return "opencode_config"
+
+
+def _resolve_choice_key(selection: str, *keys: str) -> str | None:
+    for key in keys:
+        for language in ("en", "zh-CN"):
+            if selection == translate(language, key):
+                return key
+    return None
 
 
 def _exit_with_error(runtime: PluginRuntime, exc: ValueError) -> None:

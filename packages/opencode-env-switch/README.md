@@ -78,15 +78,26 @@ agent-kit opencode-env-switch wizard
 
 ### wizard 命令
 
-`wizard` 命令提供交互式设置向导，引导用户完成初始配置：
+`wizard` 命令现在是交互式配置入口，而不是仅用于第一次初始化。直接执行：
 
-1. 欢迎界面
-2. 询问是否初始化 zsh 集成
-3. 询问是否创建第一个 profile
-4. 引导输入 profile 名称、描述
-5. 选择配置路径方式：自动创建（推荐）或手动输入路径
-6. 根据所选方式配置 opencode_config、tui_config、config_dir
-7. 确认并保存配置
+```bash
+agent-kit opencode-env-switch wizard
+```
+
+进入后会先显示管理菜单，可用于：
+
+1. 新增 profile
+2. 更新已有 profile
+3. 切换当前 active profile
+4. 初始化或修复 zsh 集成
+5. 查看当前状态后退出
+
+其中新增 profile 时，仍支持两种路径来源：
+
+- 自动创建（推荐）：在 `profiles/<name>/` 下创建受管文件
+- 手动输入：引用已有路径
+
+更新已有 profile 时会在当前配置基础上操作，不会再从空默认配置起步，也不会清空已有 profile。
 
 ## CLI 语言
 

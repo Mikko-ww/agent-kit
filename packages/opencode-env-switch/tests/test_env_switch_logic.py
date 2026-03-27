@@ -142,6 +142,29 @@ def test_create_profile_directory_rejects_existing(tmp_path: Path):
         )
 
 
+def test_ensure_managed_profile_paths_reuses_existing_files_without_overwriting(tmp_path: Path):
+    logic_module = require_module("opencode_env_switch.logic")
+    config_module = require_module("opencode_env_switch.config")
+    config_root = tmp_path / "config"
+    profile_dir = config_module.profiles_base_path(config_root) / "work"
+    profile_dir.mkdir(parents=True)
+    existing_opencode = profile_dir / "opencode.jsonc"
+    existing_opencode.write_text('{"custom": true}\n', encoding="utf-8")
+
+    result = logic_module.ensure_managed_profile_paths(
+        config_root,
+        "work",
+        create_opencode_config=True,
+        create_tui_config=True,
+        create_config_dir=True,
+    )
+
+    assert result.opencode_config == existing_opencode
+    assert existing_opencode.read_text(encoding="utf-8") == '{"custom": true}\n'
+    assert result.tui_config is not None and result.tui_config.exists()
+    assert result.config_dir is not None and result.config_dir.exists()
+
+
 def test_remove_profile_rejects_active_profile(tmp_path: Path):
     config_module = require_module("opencode_env_switch.config")
     logic_module = require_module("opencode_env_switch.logic")

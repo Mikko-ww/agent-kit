@@ -67,7 +67,10 @@ core 侧当前还提供固定短名 alias：
 - 若 `profiles/<name>/` 目录已存在则拒绝自动创建
 - `profile add --auto-create` 支持与手动路径参数混合使用
 - 交互模式下对每个路径提供"自动创建 / 输入已有路径 / 跳过"三选一
-- wizard 在配置路径前先让用户选择"自动创建"或"手动输入"模式
+- wizard 是通用配置管理入口，不再限定为首次引导
+- wizard 直接通过 `agent-kit opencode-env-switch wizard` 进入交互，不再使用 `wizard default`
+- wizard 主菜单至少覆盖：新增 profile、更新已有 profile、切换 active profile、初始化/修复 zsh 集成、查看状态
+- wizard 在新增或更新路径时，需要支持自动创建与手动输入两种模式
 - 每个 profile 至少声明一个受管路径
 - 受管环境变量仅包括：
   - `OPENCODE_CONFIG`
@@ -89,7 +92,9 @@ core 侧当前还提供固定短名 alias：
 - `profile add --auto-create` 是否正确在受管目录下创建模板文件
 - `profile add --auto-create` 与手动路径混合时是否只自动创建未指定的路径
 - 自动创建失败（如 profile 重名）时是否回滚已创建的目录
+- wizard 是否在已有配置基础上操作，而不是覆盖旧 profile
 - wizard 的自动创建模式是否正确生成文件并记录路径
+- wizard 更新已有 profile 时是否复用受管目录而不破坏已有文件
 - `switch` 是否正确更新 `active_profile` 并输出完整 `export`/`unset`
 - `export` 是否输出可直接用于 zsh 的 shell 片段
 - `status` 是否正确反映 zsh 接入状态、受管文件状态和 profile 路径有效性
