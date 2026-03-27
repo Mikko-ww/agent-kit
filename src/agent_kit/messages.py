@@ -3,6 +3,7 @@ from __future__ import annotations
 MESSAGES: dict[str, dict[str, str]] = {
     "en": {
         "app.help": "CLI for managing and running official plugins.",
+        "app.version.help": "Show agent-kit version and exit.",
         "plugins.help": "Manage official plugins.",
         "plugins.refresh.help": "Refresh the cached official plugin registry.",
         "plugins.list.help": "List installed and available official plugins.",
@@ -63,6 +64,7 @@ MESSAGES: dict[str, dict[str, str]] = {
     },
     "zh-CN": {
         "app.help": "官方插件管理与执行 CLI。",
+        "app.version.help": "显示 agent-kit 版本并退出。",
         "plugins.help": "管理官方插件。",
         "plugins.refresh.help": "刷新本地缓存的官方插件注册表。",
         "plugins.list.help": "列出已安装和可用的官方插件。",

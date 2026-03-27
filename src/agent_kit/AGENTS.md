@@ -17,7 +17,7 @@
 
 core 负责：
 
-- 提供根命令 `agent-kit`
+- 提供根命令 `agent-kit`（含 `--version` / `-V` 输出 core 版本）
 - 暴露 `agent-kit plugins <action>` 管理命令
 - 暴露 `agent-kit alias <action>` alias 管理命令
 - 暴露 `agent-kit <plugin-alias> ...` 到官方插件的短名转发

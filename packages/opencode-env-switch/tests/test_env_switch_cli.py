@@ -271,7 +271,11 @@ def test_profile_add_auto_create_creates_all_files(tmp_path: Path):
     assert profiles_dir.exists()
     assert (profiles_dir / "opencode.jsonc").is_file()
     assert (profiles_dir / "tui.json").is_file()
-    assert (profiles_dir / "config").is_dir()
+    assert not (profiles_dir / "config").exists()
+    config_module = require_module("opencode_env_switch.config")
+    loaded = config_module.load_config(tmp_path / "config")
+    work = next(p for p in loaded.profiles if p.name == "work")
+    assert work.config_dir == profiles_dir
     assert "Created profile directory" in result.output
 
 
@@ -295,7 +299,10 @@ def test_profile_add_auto_create_mixed_with_manual_path(tmp_path: Path):
     profiles_dir = tmp_path / "config" / "plugins" / "opencode-env-switch" / "profiles" / "mixed"
     assert (profiles_dir / "opencode.jsonc").is_file()
     assert not (profiles_dir / "tui.json").exists()
-    assert (profiles_dir / "config").is_dir()
+    assert not (profiles_dir / "config").exists()
+    config_module = require_module("opencode_env_switch.config")
+    mixed = next(p for p in config_module.load_config(tmp_path / "config").profiles if p.name == "mixed")
+    assert mixed.config_dir == profiles_dir
 
 
 def test_profile_add_auto_create_rollback_on_duplicate_name(tmp_path: Path):
@@ -362,7 +369,10 @@ def test_wizard_auto_create_mode(tmp_path: Path):
     assert profiles_dir.exists()
     assert (profiles_dir / "opencode.jsonc").is_file()
     assert (profiles_dir / "tui.json").is_file()
-    assert (profiles_dir / "config").is_dir()
+    assert not (profiles_dir / "config").exists()
+    config_module = require_module("opencode_env_switch.config")
+    tp = next(p for p in config_module.load_config(tmp_path / "config").profiles if p.name == "testprofile")
+    assert tp.config_dir == profiles_dir
     assert "Setup completed" in result.output
 
 

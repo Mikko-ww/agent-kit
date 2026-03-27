@@ -63,7 +63,7 @@ core 侧当前还提供固定短名 alias：
 - v1 只支持 zsh，不处理 bash/fish
 - profile 可保存外部路径引用，也可通过 `--auto-create` 在受管目录下自动创建配置文件
 - 自动创建的 profile 文件统一位于 `{config_root}/plugins/opencode-env-switch/profiles/<name>/`
-- 自动创建的目录结构包含 `opencode.jsonc`（带注释模板）、`tui.json`（最小模板）、`config/`（空目录）
+- 自动创建时可生成 `opencode.jsonc`（带注释模板）、`tui.json`（最小模板）；若用户选择为 `config_dir` 自动创建，则 `OPENCODE_CONFIG_DIR` 指向 `profiles/<name>/` 根目录，不再额外创建 `profiles/<name>/config/` 子目录
 - 若 `profiles/<name>/` 目录已存在则拒绝自动创建
 - `profile add --auto-create` 支持与手动路径参数混合使用
 - 交互模式下对每个路径提供"自动创建 / 输入已有路径 / 跳过"三选一

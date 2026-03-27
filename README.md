@@ -57,6 +57,7 @@ agent-kit plugins install <plugin-id>
 ## 常用命令
 
 ```bash
+agent-kit --version
 agent-kit plugins list
 agent-kit plugins info skills-link
 agent-kit plugins install skills-link

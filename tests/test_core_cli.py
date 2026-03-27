@@ -37,6 +37,25 @@ def test_help_lists_installed_plugins_only(tmp_path: Path):
     assert "missing executable" in result.output
 
 
+def test_version_option_prints_core_version():
+    cli = require_module("agent_kit.cli")
+    agent_kit = require_module("agent_kit")
+    manager = SimpleNamespace(
+        runnable_plugins=lambda: [],
+        broken_plugins=lambda: [],
+    )
+    app = cli.create_app(manager_factory=lambda: manager)
+    expected = f"agent-kit {agent_kit.__version__}"
+
+    result = CliRunner().invoke(app, ["--version"])
+    assert result.exit_code == 0
+    assert result.output.strip() == expected
+
+    result_short = CliRunner().invoke(app, ["-V"])
+    assert result_short.exit_code == 0
+    assert result_short.output.strip() == expected
+
+
 def test_dynamic_plugin_command_forwards_extra_args():
     cli = require_module("agent_kit.cli")
     calls: list[tuple[str, list[str]]] = []
@@ -330,6 +349,7 @@ def test_help_uses_zh_cn_when_config_requests_it(tmp_path: Path, monkeypatch: py
     assert result.exit_code == 0
     assert "官方插件管理与执行 CLI。" in result.output
     assert "管理官方插件。" in result.output
+    assert "显示 agent-kit 版本并退出。" in result.output
 
 
 def test_main_returns_one_when_plugin_error_occurs(monkeypatch: pytest.MonkeyPatch):

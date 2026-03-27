@@ -67,10 +67,11 @@ agent-kit opencode-env-switch wizard
 
 ```text
 ~/.config/agent-kit/plugins/opencode-env-switch/profiles/<name>/
-├── opencode.jsonc    (带注释的配置模板)
-├── tui.json          (最小配置模板)
-└── config/           (配置目录)
+├── opencode.jsonc    (带注释的配置模板，可选)
+├── tui.json          (最小配置模板，可选)
 ```
+
+自动创建且为 `config_dir` 选择「自动创建」时，`config_dir` 会指向上述 **profile 根目录** `profiles/<name>/`（即 `OPENCODE_CONFIG_DIR` 与该目录一致），不再生成额外的 `config/` 子目录。手动指定 `--config-dir` 或交互输入的路径不受影响。
 
 - 单独使用 `--auto-create` 时，三个路径全部自动创建
 - 可与 `--opencode-config`、`--tui-config`、`--config-dir` 组合：已手动指定的路径不自动创建，其余自动创建

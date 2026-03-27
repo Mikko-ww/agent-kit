@@ -19,9 +19,10 @@
 └── profiles/
     └── <profile-name>/
         ├── opencode.jsonc    (带注释的 OpenCode 配置模板)
-        ├── tui.json          (最小 TUI 配置模板)
-        └── config/           (OpenCode 配置目录)
+        └── tui.json          (最小 TUI 配置模板)
 ```
+
+若用户在自动创建流程中为 `config_dir` 选择自动创建，则 `OPENCODE_CONFIG_DIR` 指向 `profiles/<profile-name>/` 根目录本身，不再创建 `config/` 子目录。
 
 ## 涉及文件
 
