@@ -89,6 +89,7 @@ def test_install_or_update_zsh_integration_is_idempotent(tmp_path: Path):
 
 def test_create_profile_directory_creates_all_three(tmp_path: Path):
     logic_module = require_module("opencode_env_switch.logic")
+    config_module = require_module("opencode_env_switch.config")
     config_root = tmp_path / "config"
 
     result = logic_module.create_profile_directory(
@@ -107,7 +108,9 @@ def test_create_profile_directory_creates_all_three(tmp_path: Path):
     assert result.config_dir.exists() and result.config_dir.is_dir()
     assert result.opencode_config.name == "opencode.jsonc"
     assert result.tui_config.name == "tui.json"
-    assert result.config_dir.name == "config"
+    expected_profile_dir = config_module.profiles_base_path(config_root) / "work"
+    assert result.config_dir == expected_profile_dir
+    assert not (expected_profile_dir / "config").exists()
     assert "OpenCode configuration" in result.opencode_config.read_text(encoding="utf-8")
     assert result.tui_config.read_text(encoding="utf-8").strip() == "{}"
 
@@ -163,6 +166,8 @@ def test_ensure_managed_profile_paths_reuses_existing_files_without_overwriting(
     assert existing_opencode.read_text(encoding="utf-8") == '{"custom": true}\n'
     assert result.tui_config is not None and result.tui_config.exists()
     assert result.config_dir is not None and result.config_dir.exists()
+    assert result.config_dir == profile_dir
+    assert not (profile_dir / "config").exists()
 
 
 def test_remove_profile_rejects_active_profile(tmp_path: Path):

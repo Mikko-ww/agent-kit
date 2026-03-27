@@ -79,8 +79,8 @@ def create_profile_directory(
         tui_config_path.write_text(TUI_CONFIG_TEMPLATE, encoding="utf-8")
 
     if create_config_dir:
-        config_dir_path = profile_dir / "config"
-        config_dir_path.mkdir(parents=True, exist_ok=True)
+        # 自动创建模式下 OPENCODE_CONFIG_DIR 指向 profile 根目录，不再额外建 profiles/<name>/config/
+        config_dir_path = profile_dir
 
     return AutoCreateResult(
         opencode_config=opencode_config_path,
@@ -115,8 +115,7 @@ def ensure_managed_profile_paths(
             tui_config_path.write_text(TUI_CONFIG_TEMPLATE, encoding="utf-8")
 
     if create_config_dir:
-        config_dir_path = profile_dir / "config"
-        config_dir_path.mkdir(parents=True, exist_ok=True)
+        config_dir_path = profile_dir
 
     return AutoCreateResult(
         opencode_config=opencode_config_path,
