@@ -56,6 +56,7 @@ agent-kit opencode-env-switch profile add --name work --auto-create --tui-config
 agent-kit opencode-env-switch profile update --name work --description "new description"
 agent-kit opencode-env-switch profile remove --name work
 agent-kit opencode-env-switch switch --name work
+agent-kit opencode-env-switch switch --name default
 agent-kit opencode-env-switch export --name work --shell zsh
 agent-kit opencode-env-switch status
 agent-kit opencode-env-switch wizard
@@ -116,6 +117,7 @@ agent-kit opencode-env-switch wizard
 - 自动创建的 profile 文件统一位于 `~/.config/agent-kit/plugins/opencode-env-switch/profiles/<name>/`
 - 每个 profile 至少要声明 `opencode_config`、`tui_config`、`config_dir` 中的一项
 - `switch` 和 `export` 会校验 profile 中所有已声明路径
+- 虚拟目标 **`default`**（不可用作自定义 profile 名）：写入受管 `active.zsh` 时对上述三个变量全部 `unset`，相当于不再通过本插件覆盖 OpenCode 相关环境变量；无已注册 profile 时仍可使用 `switch` / `export` 的 `default`
 - 切换时对未声明的受管变量显式 `unset`，避免旧 profile 残留
 - `init zsh` 只在 `.zshrc` 中维护一个带 marker 的 `source` 块，重复执行必须幂等
 - `profile remove` 默认不允许删除当前 active profile

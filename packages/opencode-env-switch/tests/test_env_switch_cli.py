@@ -194,6 +194,64 @@ def test_profile_add_list_and_switch_commands_manage_profiles(tmp_path: Path):
     assert str(config_dir) in active_content
 
 
+def test_switch_to_default_unsets_opencode_vars(tmp_path: Path):
+    opencode_config = tmp_path / "work-opencode.jsonc"
+    opencode_config.write_text("{}", encoding="utf-8")
+    save_config(tmp_path, [{"name": "work", "opencode_config": opencode_config}], active_profile="work")
+    app = build_app(tmp_path, FakeIO())
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["switch", "--name", "default"])
+
+    assert result.exit_code == 0
+    assert "Switched active profile to default" in result.output
+    active_file = tmp_path / "config" / "plugins" / "opencode-env-switch" / "zsh" / "active.zsh"
+    content = active_file.read_text(encoding="utf-8")
+    assert "unset OPENCODE_CONFIG" in content
+    assert "unset OPENCODE_TUI_CONFIG" in content
+    assert "unset OPENCODE_CONFIG_DIR" in content
+    config_module = require_module("opencode_env_switch.config")
+    loaded = config_module.load_config(tmp_path / "config")
+    assert loaded is not None
+    assert loaded.active_profile == "default"
+
+
+def test_switch_default_works_without_user_profiles(tmp_path: Path):
+    save_config(tmp_path, [], active_profile=None)
+    app = build_app(tmp_path, FakeIO())
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["switch", "--name", "default"])
+
+    assert result.exit_code == 0
+    active_file = tmp_path / "config" / "plugins" / "opencode-env-switch" / "zsh" / "active.zsh"
+    assert "unset OPENCODE_CONFIG" in active_file.read_text(encoding="utf-8")
+
+
+def test_export_default_prints_unsets(tmp_path: Path):
+    save_config(tmp_path, [], active_profile=None)
+    app = build_app(tmp_path, FakeIO())
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["export", "--name", "default", "--shell", "zsh"])
+
+    assert result.exit_code == 0
+    assert "unset OPENCODE_CONFIG" in result.output
+
+
+def test_profile_add_rejects_reserved_name_default(tmp_path: Path):
+    app = build_app(tmp_path, FakeIO())
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        ["profile", "add", "--name", "default", "--auto-create"],
+    )
+
+    assert result.exit_code == 1
+    assert "reserved" in result.output
+
+
 def test_switch_without_name_prompts_for_profile_selection(tmp_path: Path):
     alpha_config = tmp_path / "alpha.jsonc"
     beta_config = tmp_path / "beta.jsonc"

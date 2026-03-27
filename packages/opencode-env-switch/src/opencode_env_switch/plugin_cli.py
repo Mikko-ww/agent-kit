@@ -15,9 +15,12 @@ from opencode_env_switch import API_VERSION, CONFIG_VERSION, PLUGIN_ID, __versio
 from opencode_env_switch.config import (
     OpencodeEnvSwitchConfig,
     ProfileConfig,
+    SYSTEM_DEFAULT_PROFILE_NAME,
     default_config,
+    is_system_default_profile_name,
     load_config,
     save_config,
+    validate_user_profile_name_for_register,
 )
 from opencode_env_switch.locale import resolve_language
 from opencode_env_switch.messages import translate
@@ -190,6 +193,7 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
         created_dir: Path | None = None
         try:
             resolved_name = _resolve_profile_name(runtime, name)
+            validate_user_profile_name_for_register(resolved_name)
 
             if auto_create:
                 oc = _resolve_optional_file_path(opencode_config, key="opencode_config")
@@ -303,13 +307,13 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
         name: str | None = typer.Option(None, "--name", help=_t(language, "option.name")),
     ) -> None:
         runtime = runtime_factory()
-        config = _require_profiles(runtime)
-        selected_name = name or _select_profile_name(runtime, config)
+        config = _load_or_default_config(runtime)
+        selected_name = name.strip() if name else ""
+        selected_name = selected_name or _select_switch_target_name(runtime, config)
         try:
-            profile = get_profile(config, selected_name)
-            validate_profile_paths(profile)
-            write_shell_source_file(config.shells.zsh.source_file, render_zsh_env(profile))
-            updated = activate_profile(config, selected_name)
+            if not is_system_default_profile_name(selected_name) and not config.profiles:
+                raise ValueError(_tr(runtime, "error.no_profiles_configured"))
+            updated = _apply_profile_switch(runtime, config, selected_name)
             save_config(runtime.config_root, updated)
         except ValueError as exc:
             _exit_with_error(runtime, exc)
@@ -323,9 +327,15 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
         runtime = runtime_factory()
         if shell != "zsh":
             _exit_with_error(runtime, ValueError(_tr(runtime, "error.unsupported_shell", shell=shell)))
-        config = _require_profiles(runtime)
-        selected_name = name or _select_profile_name(runtime, config)
+        config = _load_or_default_config(runtime)
+        selected_name = name.strip() if name else ""
+        selected_name = selected_name or _select_switch_target_name(runtime, config)
         try:
+            if not is_system_default_profile_name(selected_name) and not config.profiles:
+                raise ValueError(_tr(runtime, "error.no_profiles_configured"))
+            if is_system_default_profile_name(selected_name):
+                runtime.io.echo(render_zsh_env(None))
+                return
             profile = get_profile(config, selected_name)
             validate_profile_paths(profile)
         except ValueError as exc:
@@ -428,6 +438,25 @@ def _select_profile_name(runtime: PluginRuntime, config: OpencodeEnvSwitchConfig
         _tr(runtime, "prompt.select_profile"),
         [profile.name for profile in config.profiles],
     )
+
+
+def _select_switch_target_name(runtime: PluginRuntime, config: OpencodeEnvSwitchConfig) -> str:
+    choices = [SYSTEM_DEFAULT_PROFILE_NAME, *[p.name for p in config.profiles]]
+    return runtime.io.select_one(_tr(runtime, "prompt.select_switch_target"), choices)
+
+
+def _apply_profile_switch(
+    runtime: PluginRuntime,
+    config: OpencodeEnvSwitchConfig,
+    selected_name: str,
+) -> OpencodeEnvSwitchConfig:
+    if is_system_default_profile_name(selected_name):
+        write_shell_source_file(config.shells.zsh.source_file, render_zsh_env(None))
+        return activate_profile(config, selected_name)
+    profile = get_profile(config, selected_name)
+    validate_profile_paths(profile)
+    write_shell_source_file(config.shells.zsh.source_file, render_zsh_env(profile))
+    return activate_profile(config, selected_name)
 
 
 def _resolve_profile_name(runtime: PluginRuntime, name: str | None) -> str:
@@ -569,6 +598,7 @@ def _wizard_add_profile(
     config: OpencodeEnvSwitchConfig,
 ) -> tuple[OpencodeEnvSwitchConfig, str]:
     profile_name = _resolve_profile_name(runtime, None)
+    validate_user_profile_name_for_register(profile_name)
     description = runtime.io.prompt_text(
         _tr(runtime, "wizard.prompt_profile_description"),
         default="",
@@ -683,14 +713,12 @@ def _wizard_switch_profile(
     runtime: PluginRuntime,
     config: OpencodeEnvSwitchConfig,
 ) -> OpencodeEnvSwitchConfig:
-    if not config.profiles:
+    selected_name = _select_switch_target_name(runtime, config)
+    if not is_system_default_profile_name(selected_name) and not config.profiles:
         raise ValueError(_tr(runtime, "error.no_profiles_configured"))
-    selected_name = _select_profile_name(runtime, config)
-    profile = get_profile(config, selected_name)
-    validate_profile_paths(profile)
-    write_shell_source_file(config.shells.zsh.source_file, render_zsh_env(profile))
+    updated = _apply_profile_switch(runtime, config, selected_name)
     runtime.io.echo(_tr(runtime, "result.switched", name=selected_name))
-    return activate_profile(config, selected_name)
+    return updated
 
 
 def _wizard_repair_zsh(
@@ -804,6 +832,8 @@ def _echo_status(
 
 def _active_profile_or_none(config: OpencodeEnvSwitchConfig) -> ProfileConfig | None:
     if config.active_profile is None:
+        return None
+    if is_system_default_profile_name(config.active_profile):
         return None
     return get_profile(config, config.active_profile)
 

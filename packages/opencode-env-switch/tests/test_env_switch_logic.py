@@ -170,6 +170,117 @@ def test_ensure_managed_profile_paths_reuses_existing_files_without_overwriting(
     assert not (profile_dir / "config").exists()
 
 
+def test_add_profile_rejects_reserved_name_default(tmp_path: Path):
+    config_module = require_module("opencode_env_switch.config")
+    logic_module = require_module("opencode_env_switch.logic")
+    oc = tmp_path / "x.jsonc"
+    oc.write_text("{}", encoding="utf-8")
+    base = config_module.OpencodeEnvSwitchConfig(
+        active_profile=None,
+        shells=config_module.ShellsConfig(
+            zsh=config_module.ZshShellConfig(
+                rc_file=tmp_path / ".zshrc",
+                source_file=tmp_path / "active.zsh",
+                installed=False,
+            )
+        ),
+        profiles=[],
+    )
+    profile = config_module.ProfileConfig(
+        name="default",
+        description=None,
+        opencode_config=oc,
+        tui_config=None,
+        config_dir=None,
+    )
+    with pytest.raises(ValueError, match="reserved"):
+        logic_module.add_profile(base, profile)
+
+
+def test_activate_profile_accepts_virtual_default(tmp_path: Path):
+    config_module = require_module("opencode_env_switch.config")
+    logic_module = require_module("opencode_env_switch.logic")
+    oc = tmp_path / "x.jsonc"
+    oc.write_text("{}", encoding="utf-8")
+    cfg = config_module.OpencodeEnvSwitchConfig(
+        active_profile="work",
+        shells=config_module.ShellsConfig(
+            zsh=config_module.ZshShellConfig(
+                rc_file=tmp_path / ".zshrc",
+                source_file=tmp_path / "active.zsh",
+                installed=False,
+            )
+        ),
+        profiles=[
+            config_module.ProfileConfig(
+                name="work",
+                description=None,
+                opencode_config=oc,
+                tui_config=None,
+                config_dir=None,
+            )
+        ],
+    )
+    updated = logic_module.activate_profile(cfg, "default")
+    assert updated.active_profile == "default"
+
+
+def test_save_and_load_round_trip_active_default_no_profiles(tmp_path: Path):
+    config_module = require_module("opencode_env_switch.config")
+    root = tmp_path / "agent-kit"
+    cfg = config_module.OpencodeEnvSwitchConfig(
+        active_profile="default",
+        shells=config_module.ShellsConfig(
+            zsh=config_module.ZshShellConfig(
+                rc_file=tmp_path / ".zshrc",
+                source_file=root / "plugins" / "opencode-env-switch" / "zsh" / "active.zsh",
+                installed=False,
+            )
+        ),
+        profiles=[],
+    )
+    config_module.save_config(root, cfg)
+    loaded = config_module.load_config(root)
+    assert loaded is not None
+    assert loaded.active_profile == "default"
+    assert loaded.profiles == []
+
+
+def test_load_config_rejects_user_profile_named_default(tmp_path: Path):
+    config_module = require_module("opencode_env_switch.config")
+    root = tmp_path / "agent-kit"
+    oc = tmp_path / "legacy.jsonc"
+    oc.write_text("{}", encoding="utf-8")
+    path = config_module.config_file_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "\n".join(
+            [
+                "{",
+                '  "plugin_id": "opencode-env-switch",',
+                '  "config_version": 1,',
+                '  "active_profile": null,',
+                '  "shells": {',
+                '    "zsh": {',
+                f'      "rc_file": "{tmp_path / ".zshrc"}",',
+                f'      "source_file": "{root / "plugins" / "opencode-env-switch" / "zsh" / "active.zsh"}",',
+                '      "installed": false',
+                "    }",
+                "  },",
+                '  "profiles": [',
+                "    {",
+                '      "name": "default",',
+                f'      "opencode_config": "{oc}"',
+                "    }",
+                "  ]",
+                "}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    assert config_module.load_config(root) is None
+
+
 def test_remove_profile_rejects_active_profile(tmp_path: Path):
     config_module = require_module("opencode_env_switch.config")
     logic_module = require_module("opencode_env_switch.logic")

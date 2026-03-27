@@ -9,6 +9,23 @@ from opencode_env_switch.jsonc import load_jsonc, write_jsonc
 
 PROFILE_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 
+# 虚拟切换目标：写入 active.zsh 时 unset 全部 OPENCODE_*，恢复 shell 默认行为（不经由本插件覆盖）
+SYSTEM_DEFAULT_PROFILE_NAME = "default"
+
+
+def is_system_default_profile_name(name: str) -> bool:
+    return name == SYSTEM_DEFAULT_PROFILE_NAME
+
+
+def validate_user_profile_name_for_register(name: str) -> None:
+    """用户自定义 profile 注册前校验：合法 pattern 且不得占用保留名 default。"""
+    if not isinstance(name, str) or not PROFILE_NAME_PATTERN.fullmatch(name):
+        raise ValueError(f"invalid profile name: {name}")
+    if is_system_default_profile_name(name):
+        raise ValueError(
+            f"profile name '{SYSTEM_DEFAULT_PROFILE_NAME}' is reserved for system OpenCode environment"
+        )
+
 
 @dataclass(slots=True, frozen=True)
 class ProfileConfig:
@@ -113,11 +130,11 @@ def load_config(config_root: Path) -> OpencodeEnvSwitchConfig | None:
         profiles.append(profile)
 
     active_profile = data.get("active_profile")
-    if active_profile is not None and (
-        not isinstance(active_profile, str)
-        or active_profile not in seen_names
-    ):
-        return None
+    if active_profile is not None:
+        if not isinstance(active_profile, str):
+            return None
+        if active_profile != SYSTEM_DEFAULT_PROFILE_NAME and active_profile not in seen_names:
+            return None
 
     return OpencodeEnvSwitchConfig(
         active_profile=active_profile,
@@ -176,8 +193,11 @@ def _validate_config(config: OpencodeEnvSwitchConfig) -> None:
             raise ValueError(f"profile must define at least one path: {profile.name}")
         seen_names.add(profile.name)
 
-    if config.active_profile is not None and config.active_profile not in seen_names:
-        raise ValueError(f"unknown active profile: {config.active_profile}")
+    if config.active_profile is not None:
+        if is_system_default_profile_name(config.active_profile):
+            pass
+        elif config.active_profile not in seen_names:
+            raise ValueError(f"unknown active profile: {config.active_profile}")
 
 
 def _profile_has_paths(profile: ProfileConfig) -> bool:
@@ -194,4 +214,8 @@ def _optional_path(value: object | None) -> Path | None:
 
 
 def _is_valid_profile_name(name: object) -> bool:
-    return isinstance(name, str) and bool(PROFILE_NAME_PATTERN.fullmatch(name))
+    return (
+        isinstance(name, str)
+        and bool(PROFILE_NAME_PATTERN.fullmatch(name))
+        and not is_system_default_profile_name(name)
+    )

@@ -40,7 +40,7 @@ core 侧当前还提供固定短名 alias：
 
 - `plugin_id`
 - `config_version`
-- `active_profile`
+- `active_profile`（可为已注册的 profile 名，或虚拟目标 `default`）
 - `shells.zsh.rc_file`
 - `shells.zsh.source_file`
 - `shells.zsh.installed`
@@ -72,6 +72,7 @@ core 侧当前还提供固定短名 alias：
 - wizard 主菜单至少覆盖：新增 profile、更新已有 profile、切换 active profile、初始化/修复 zsh 集成、查看状态
 - wizard 在新增或更新路径时，需要支持自动创建与手动输入两种模式
 - 每个 profile 至少声明一个受管路径
+- 虚拟切换目标 `default`（保留名，不可作为用户自定义 profile 名称）：`switch` / `export` 选择后受管 `active.zsh` 对 `OPENCODE_CONFIG`、`OPENCODE_TUI_CONFIG`、`OPENCODE_CONFIG_DIR` 全部 `unset`，由 shell 恢复未受插件覆盖的行为；交互式切换列表中 `default` 固定为第一项
 - 受管环境变量仅包括：
   - `OPENCODE_CONFIG`
   - `OPENCODE_TUI_CONFIG`
