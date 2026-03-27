@@ -42,6 +42,10 @@ def config_file_path(config_root: Path) -> Path:
     return config_root / "plugins" / PLUGIN_ID / "config.jsonc"
 
 
+def profiles_base_path(config_root: Path) -> Path:
+    return config_root / "plugins" / PLUGIN_ID / "profiles"
+
+
 def default_zsh_source_file(config_root: Path) -> Path:
     return config_root / "plugins" / PLUGIN_ID / "zsh" / "active.zsh"
 

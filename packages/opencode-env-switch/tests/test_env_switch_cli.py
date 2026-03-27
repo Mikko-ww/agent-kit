@@ -257,6 +257,320 @@ def test_export_outputs_zsh_fragment_and_unsets_missing_variables(tmp_path: Path
     assert "unset OPENCODE_CONFIG_DIR" in result.output
 
 
+def test_profile_add_auto_create_creates_all_files(tmp_path: Path):
+    app = build_app(tmp_path, FakeIO())
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        ["profile", "add", "--name", "work", "--auto-create"],
+    )
+
+    assert result.exit_code == 0
+    profiles_dir = tmp_path / "config" / "plugins" / "opencode-env-switch" / "profiles" / "work"
+    assert profiles_dir.exists()
+    assert (profiles_dir / "opencode.jsonc").is_file()
+    assert (profiles_dir / "tui.json").is_file()
+    assert (profiles_dir / "config").is_dir()
+    assert "Created profile directory" in result.output
+
+
+def test_profile_add_auto_create_mixed_with_manual_path(tmp_path: Path):
+    tui_config = tmp_path / "my-tui.json"
+    tui_config.write_text("{}", encoding="utf-8")
+    app = build_app(tmp_path, FakeIO())
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        [
+            "profile", "add",
+            "--name", "mixed",
+            "--auto-create",
+            "--tui-config", str(tui_config),
+        ],
+    )
+
+    assert result.exit_code == 0
+    profiles_dir = tmp_path / "config" / "plugins" / "opencode-env-switch" / "profiles" / "mixed"
+    assert (profiles_dir / "opencode.jsonc").is_file()
+    assert not (profiles_dir / "tui.json").exists()
+    assert (profiles_dir / "config").is_dir()
+
+
+def test_profile_add_auto_create_rollback_on_duplicate_name(tmp_path: Path):
+    opencode_config = tmp_path / "existing.jsonc"
+    opencode_config.write_text("{}", encoding="utf-8")
+    save_config(
+        tmp_path,
+        [{"name": "dupe", "opencode_config": opencode_config}],
+    )
+    app = build_app(tmp_path, FakeIO())
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        ["profile", "add", "--name", "dupe", "--auto-create"],
+    )
+
+    assert result.exit_code == 1
+    profiles_dir = tmp_path / "config" / "plugins" / "opencode-env-switch" / "profiles" / "dupe"
+    assert not profiles_dir.exists()
+
+
+def test_profile_add_interactive_auto_create_single_path(tmp_path: Path):
+    auto_label = "Auto-create (recommended)"
+    skip_label = "Skip"
+    app = build_app(
+        tmp_path,
+        FakeIO(
+            text_answers=["myprofile"],
+            select_answers=[auto_label, skip_label, skip_label],
+        ),
+    )
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["profile", "add"])
+
+    assert result.exit_code == 0
+    profiles_dir = tmp_path / "config" / "plugins" / "opencode-env-switch" / "profiles" / "myprofile"
+    assert (profiles_dir / "opencode.jsonc").is_file()
+    assert not (profiles_dir / "tui.json").exists()
+    assert not (profiles_dir / "config").exists()
+
+
+def test_wizard_auto_create_mode(tmp_path: Path):
+    auto_mode_label = "Auto-create (recommended) - generate config files under managed directory"
+    app = build_app(
+        tmp_path,
+        FakeIO(
+            text_answers=["testprofile", ""],
+            confirm_answers=[
+                True,   # create opencode_config
+                True,   # create tui_config
+                True,   # create config_dir
+            ],
+            select_answers=["Add profile", auto_mode_label],
+        ),
+    )
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["wizard"])
+
+    assert result.exit_code == 0
+    profiles_dir = tmp_path / "config" / "plugins" / "opencode-env-switch" / "profiles" / "testprofile"
+    assert profiles_dir.exists()
+    assert (profiles_dir / "opencode.jsonc").is_file()
+    assert (profiles_dir / "tui.json").is_file()
+    assert (profiles_dir / "config").is_dir()
+    assert "Setup completed" in result.output
+
+
+def test_wizard_manual_mode_still_works(tmp_path: Path):
+    opencode_config = tmp_path / "manual.jsonc"
+    opencode_config.write_text("{}", encoding="utf-8")
+    manual_mode_label = "Enter existing paths - specify paths to existing config files"
+    app = build_app(
+        tmp_path,
+        FakeIO(
+            text_answers=["manual-profile", "", str(opencode_config), "", ""],
+            select_answers=["Add profile", manual_mode_label],
+        ),
+    )
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["wizard"])
+
+    assert result.exit_code == 0
+    assert "Setup completed" in result.output
+
+
+def test_wizard_runs_directly_without_default_subcommand(tmp_path: Path):
+    add_label = "Add profile"
+    app = build_app(
+        tmp_path,
+        FakeIO(
+            text_answers=["direct-profile", ""],
+            confirm_answers=[True, True, True, True],
+            select_answers=[
+                add_label,
+                "Auto-create (recommended) - generate config files under managed directory",
+            ],
+        ),
+    )
+
+    result = CliRunner().invoke(app, ["wizard"])
+
+    assert result.exit_code == 0
+    profiles_dir = tmp_path / "config" / "plugins" / "opencode-env-switch" / "profiles" / "direct-profile"
+    assert profiles_dir.exists()
+
+
+def test_wizard_add_profile_preserves_existing_profiles(tmp_path: Path):
+    first_config = tmp_path / "first.jsonc"
+    first_config.write_text("{}", encoding="utf-8")
+    save_config(
+        tmp_path,
+        [{"name": "first", "opencode_config": first_config}],
+        active_profile="first",
+    )
+    add_label = "Add profile"
+    app = build_app(
+        tmp_path,
+        FakeIO(
+            text_answers=["second", ""],
+            confirm_answers=[True, False, False, True],
+            select_answers=[
+                add_label,
+                "Auto-create (recommended) - generate config files under managed directory",
+            ],
+        ),
+    )
+
+    result = CliRunner().invoke(app, ["wizard"])
+
+    assert result.exit_code == 0
+    config_module = require_module("opencode_env_switch.config")
+    loaded = config_module.load_config(tmp_path / "config")
+    assert loaded is not None
+    assert [profile.name for profile in loaded.profiles] == ["first", "second"]
+    assert loaded.active_profile == "first"
+
+
+def test_wizard_can_switch_active_profile_from_menu(tmp_path: Path):
+    alpha_config = tmp_path / "alpha.jsonc"
+    beta_config = tmp_path / "beta.jsonc"
+    alpha_config.write_text("{}", encoding="utf-8")
+    beta_config.write_text("{}", encoding="utf-8")
+    save_config(
+        tmp_path,
+        [
+            {"name": "alpha", "opencode_config": alpha_config},
+            {"name": "beta", "opencode_config": beta_config},
+        ],
+        active_profile="alpha",
+    )
+    app = build_app(
+        tmp_path,
+        FakeIO(select_answers=["Switch active profile", "beta"]),
+    )
+
+    result = CliRunner().invoke(app, ["wizard"])
+
+    assert result.exit_code == 0
+    config_module = require_module("opencode_env_switch.config")
+    loaded = config_module.load_config(tmp_path / "config")
+    assert loaded is not None
+    assert loaded.active_profile == "beta"
+
+
+def test_wizard_menu_selection_is_stable_under_zh_locale(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("AGENT_KIT_LANG", raising=False)
+    monkeypatch.setenv("LANG", "zh_CN.UTF-8")
+    alpha_config = tmp_path / "alpha.jsonc"
+    beta_config = tmp_path / "beta.jsonc"
+    alpha_config.write_text("{}", encoding="utf-8")
+    beta_config.write_text("{}", encoding="utf-8")
+    save_config(
+        tmp_path,
+        [
+            {"name": "alpha", "opencode_config": alpha_config},
+            {"name": "beta", "opencode_config": beta_config},
+        ],
+        active_profile="alpha",
+    )
+    app = build_app(
+        tmp_path,
+        FakeIO(select_answers=["Switch active profile", "beta"]),
+    )
+
+    result = CliRunner().invoke(app, ["wizard"])
+
+    assert result.exit_code == 0
+    config_module = require_module("opencode_env_switch.config")
+    loaded = config_module.load_config(tmp_path / "config")
+    assert loaded is not None
+    assert loaded.active_profile == "beta"
+
+
+def test_wizard_can_update_existing_profile_description(tmp_path: Path):
+    work_config = tmp_path / "work.jsonc"
+    work_config.write_text("{}", encoding="utf-8")
+    save_config(
+        tmp_path,
+        [{"name": "work", "description": "old", "opencode_config": work_config}],
+        active_profile="work",
+    )
+    app = build_app(
+        tmp_path,
+        FakeIO(
+            text_answers=["updated description"],
+            select_answers=["Update existing profile", "work", "Keep current paths"],
+        ),
+    )
+
+    result = CliRunner().invoke(app, ["wizard"])
+
+    assert result.exit_code == 0
+    config_module = require_module("opencode_env_switch.config")
+    loaded = config_module.load_config(tmp_path / "config")
+    assert loaded is not None
+    assert loaded.profiles[0].description == "updated description"
+    assert loaded.profiles[0].opencode_config == work_config
+
+
+def test_wizard_can_repair_zsh_from_menu(tmp_path: Path):
+    profile_config = tmp_path / "work.jsonc"
+    profile_config.write_text("{}", encoding="utf-8")
+    save_config(
+        tmp_path,
+        [{"name": "work", "opencode_config": profile_config}],
+        active_profile="work",
+        installed=False,
+    )
+    app = build_app(
+        tmp_path,
+        FakeIO(select_answers=["Initialize or repair zsh integration"]),
+    )
+
+    result = CliRunner().invoke(app, ["wizard"])
+
+    assert result.exit_code == 0
+    source_file = tmp_path / "config" / "plugins" / "opencode-env-switch" / "zsh" / "active.zsh"
+    rc_file = tmp_path / ".zshrc"
+    assert source_file.exists()
+    assert rc_file.exists()
+    assert str(profile_config) in source_file.read_text(encoding="utf-8")
+
+
+def test_wizard_can_show_status_and_exit(tmp_path: Path):
+    profile_config = tmp_path / "work.jsonc"
+    profile_config.write_text("{}", encoding="utf-8")
+    save_config(
+        tmp_path,
+        [{"name": "work", "opencode_config": profile_config}],
+        active_profile="work",
+    )
+    app = build_app(
+        tmp_path,
+        FakeIO(select_answers=["Show current status and exit"]),
+    )
+
+    result = CliRunner().invoke(app, ["wizard"])
+
+    assert result.exit_code == 0
+    assert "active_profile: work" in result.output
+    assert "[work]" in result.output
+
+
+def test_wizard_default_subcommand_is_removed(tmp_path: Path):
+    app = build_app(tmp_path, FakeIO())
+
+    result = CliRunner().invoke(app, ["wizard", "default"])
+
+    assert result.exit_code != 0
+
+
 def test_status_reports_shell_integration_and_profile_path_state(tmp_path: Path):
     opencode_config = tmp_path / "work-opencode.jsonc"
     config_dir = tmp_path / "work-dir"
