@@ -102,7 +102,7 @@ wheels = [
 
 [[package]]
 name = "opencode-env-switch"
-version = "0.2.5"
+version = "0.2.6"
 source = { editable = "packages/opencode-env-switch" }
 dependencies = [
     { name = "questionary" },

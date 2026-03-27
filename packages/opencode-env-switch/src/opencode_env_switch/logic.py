@@ -9,7 +9,9 @@ from opencode_env_switch.config import (
     ProfileConfig,
     ShellsConfig,
     ZshShellConfig,
+    is_system_default_profile_name,
     profiles_base_path,
+    validate_user_profile_name_for_register,
 )
 
 OPENCODE_CONFIG_TEMPLATE = """\
@@ -183,6 +185,7 @@ def add_profile(
     config: OpencodeEnvSwitchConfig,
     profile: ProfileConfig,
 ) -> OpencodeEnvSwitchConfig:
+    validate_user_profile_name_for_register(profile.name)
     _validate_profile_paths(profile)
     if any(existing.name == profile.name for existing in config.profiles):
         raise ValueError(f"duplicate profile name: {profile.name}")
@@ -200,6 +203,8 @@ def update_profile(
     config_dir: Path | None = None,
 ) -> OpencodeEnvSwitchConfig:
     current = get_profile(config, name)
+    if new_name is not None:
+        validate_user_profile_name_for_register(new_name)
     updated = ProfileConfig(
         name=new_name or current.name,
         description=description if description is not None else current.description,
@@ -228,6 +233,8 @@ def remove_profile(config: OpencodeEnvSwitchConfig, name: str) -> OpencodeEnvSwi
 
 
 def activate_profile(config: OpencodeEnvSwitchConfig, name: str) -> OpencodeEnvSwitchConfig:
+    if is_system_default_profile_name(name):
+        return replace(config, active_profile=name)
     get_profile(config, name)
     return replace(config, active_profile=name)
 
