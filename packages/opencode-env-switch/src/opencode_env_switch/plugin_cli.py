@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, Sequence
@@ -20,9 +21,11 @@ from opencode_env_switch.config import (
 )
 from opencode_env_switch.locale import resolve_language
 from opencode_env_switch.messages import translate
+from opencode_env_switch.config import profiles_base_path
 from opencode_env_switch.logic import (
     activate_profile,
     add_profile,
+    create_profile_directory,
     get_profile,
     inspect_zsh_integration,
     install_or_update_zsh_integration,
@@ -181,28 +184,53 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
         opencode_config: str | None = typer.Option(None, "--opencode-config", help=_t(language, "option.opencode_config")),
         tui_config: str | None = typer.Option(None, "--tui-config", help=_t(language, "option.tui_config")),
         config_dir: str | None = typer.Option(None, "--config-dir", help=_t(language, "option.config_dir")),
+        auto_create: bool = typer.Option(False, "--auto-create", help=_t(language, "option.auto_create")),
     ) -> None:
         runtime = runtime_factory()
         config = _load_or_default_config(runtime)
+        created_dir: Path | None = None
         try:
-            profile = ProfileConfig(
-                name=_resolve_profile_name(runtime, name),
-                description=description,
-                opencode_config=_resolve_optional_file_path(opencode_config, key="opencode_config"),
-                tui_config=_resolve_optional_file_path(tui_config, key="tui_config"),
-                config_dir=_resolve_optional_dir_path(config_dir),
-            )
-            if all(path is None for path in (profile.opencode_config, profile.tui_config, profile.config_dir)):
-                profile = ProfileConfig(
-                    name=profile.name,
-                    description=profile.description,
-                    opencode_config=_prompt_optional_file_path(runtime, _tr(runtime, "prompt.opencode_config")),
-                    tui_config=_prompt_optional_file_path(runtime, _tr(runtime, "prompt.tui_config")),
-                    config_dir=_prompt_optional_dir_path(runtime, _tr(runtime, "prompt.config_dir")),
+            resolved_name = _resolve_profile_name(runtime, name)
+
+            if auto_create:
+                oc = _resolve_optional_file_path(opencode_config, key="opencode_config")
+                tc = _resolve_optional_file_path(tui_config, key="tui_config")
+                cd = _resolve_optional_dir_path(config_dir)
+                result = create_profile_directory(
+                    runtime.config_root,
+                    resolved_name,
+                    create_opencode_config=oc is None,
+                    create_tui_config=tc is None,
+                    create_config_dir=cd is None,
                 )
+                created_dir = profiles_base_path(runtime.config_root) / resolved_name
+                runtime.io.echo(_tr(runtime, "result.auto_created_dir", path=created_dir))
+                profile = ProfileConfig(
+                    name=resolved_name,
+                    description=description,
+                    opencode_config=oc or result.opencode_config,
+                    tui_config=tc or result.tui_config,
+                    config_dir=cd or result.config_dir,
+                )
+            else:
+                oc = _resolve_optional_file_path(opencode_config, key="opencode_config")
+                tc = _resolve_optional_file_path(tui_config, key="tui_config")
+                cd = _resolve_optional_dir_path(config_dir)
+                if all(p is None for p in (oc, tc, cd)):
+                    oc, tc, cd, created_dir = _prompt_path_actions(runtime, resolved_name)
+                profile = ProfileConfig(
+                    name=resolved_name,
+                    description=description,
+                    opencode_config=oc,
+                    tui_config=tc,
+                    config_dir=cd,
+                )
+
             updated = add_profile(config, profile)
             saved_path = save_config(runtime.config_root, updated)
         except ValueError as exc:
+            if created_dir and created_dir.exists():
+                shutil.rmtree(created_dir)
             _exit_with_error(runtime, exc)
         runtime.io.echo(_tr(runtime, "saved.config", path=saved_path))
 
@@ -381,26 +409,52 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
             ).strip()
             profile_description = description or None
 
-            opencode_config_path = runtime.io.prompt_text(
-                _tr(runtime, "wizard.prompt_opencode_config"),
-                default="",
-            ).strip()
-            if opencode_config_path:
-                profile_opencode_config = _resolve_optional_file_path(opencode_config_path, key="opencode_config")
+            auto_label = _tr(runtime, "prompt.path_mode.auto")
+            manual_label = _tr(runtime, "prompt.path_mode.manual")
+            path_mode = runtime.io.select_one(
+                _tr(runtime, "prompt.path_mode"),
+                [auto_label, manual_label],
+            )
 
-            tui_config_path = runtime.io.prompt_text(
-                _tr(runtime, "wizard.prompt_tui_config"),
-                default="",
-            ).strip()
-            if tui_config_path:
-                profile_tui_config = _resolve_optional_file_path(tui_config_path, key="tui_config")
+            if path_mode == auto_label:
+                base = profiles_base_path(runtime.config_root) / profile_name
+                runtime.io.echo(_tr(runtime, "wizard.auto_create_base_path", path=base))
+                do_oc = runtime.io.confirm(_tr(runtime, "prompt.auto_create_opencode_config"), default=True)
+                do_tc = runtime.io.confirm(_tr(runtime, "prompt.auto_create_tui_config"), default=True)
+                do_cd = runtime.io.confirm(_tr(runtime, "prompt.auto_create_config_dir"), default=True)
+                if do_oc or do_tc or do_cd:
+                    result = create_profile_directory(
+                        runtime.config_root,
+                        profile_name,
+                        create_opencode_config=do_oc,
+                        create_tui_config=do_tc,
+                        create_config_dir=do_cd,
+                    )
+                    runtime.io.echo(_tr(runtime, "result.auto_created_dir", path=base))
+                    profile_opencode_config = result.opencode_config
+                    profile_tui_config = result.tui_config
+                    profile_config_dir = result.config_dir
+            else:
+                opencode_config_path = runtime.io.prompt_text(
+                    _tr(runtime, "wizard.prompt_opencode_config"),
+                    default="",
+                ).strip()
+                if opencode_config_path:
+                    profile_opencode_config = _resolve_optional_file_path(opencode_config_path, key="opencode_config")
 
-            config_dir_path = runtime.io.prompt_text(
-                _tr(runtime, "wizard.prompt_config_dir"),
-                default="",
-            ).strip()
-            if config_dir_path:
-                profile_config_dir = _resolve_optional_dir_path(config_dir_path)
+                tui_config_path = runtime.io.prompt_text(
+                    _tr(runtime, "wizard.prompt_tui_config"),
+                    default="",
+                ).strip()
+                if tui_config_path:
+                    profile_tui_config = _resolve_optional_file_path(tui_config_path, key="tui_config")
+
+                config_dir_path = runtime.io.prompt_text(
+                    _tr(runtime, "wizard.prompt_config_dir"),
+                    default="",
+                ).strip()
+                if config_dir_path:
+                    profile_config_dir = _resolve_optional_dir_path(config_dir_path)
 
             runtime.io.echo("")
             runtime.io.echo(_tr(runtime, "wizard.confirm_summary"))
@@ -516,6 +570,64 @@ def _prompt_optional_dir_path(runtime: PluginRuntime, label: str) -> Path | None
     if not path.is_dir():
         _exit_with_error(runtime, ValueError(f"{_label_to_key(label)} is not a directory: {path}"))
     return path
+
+
+def _prompt_path_actions(
+    runtime: PluginRuntime,
+    profile_name: str,
+) -> tuple[Path | None, Path | None, Path | None, Path | None]:
+    auto_label = _tr(runtime, "prompt.path_action.auto")
+    manual_label = _tr(runtime, "prompt.path_action.manual")
+    skip_label = _tr(runtime, "prompt.path_action.skip")
+    choices = [auto_label, manual_label, skip_label]
+
+    auto_oc = False
+    auto_tc = False
+    auto_cd = False
+    oc: Path | None = None
+    tc: Path | None = None
+    cd: Path | None = None
+
+    action = runtime.io.select_one(
+        _tr(runtime, "prompt.path_action", field="opencode_config"), choices,
+    )
+    if action == auto_label:
+        auto_oc = True
+    elif action == manual_label:
+        oc = _prompt_optional_file_path(runtime, _tr(runtime, "prompt.opencode_config"))
+
+    action = runtime.io.select_one(
+        _tr(runtime, "prompt.path_action", field="tui_config"), choices,
+    )
+    if action == auto_label:
+        auto_tc = True
+    elif action == manual_label:
+        tc = _prompt_optional_file_path(runtime, _tr(runtime, "prompt.tui_config"))
+
+    action = runtime.io.select_one(
+        _tr(runtime, "prompt.path_action", field="config_dir"), choices,
+    )
+    if action == auto_label:
+        auto_cd = True
+    elif action == manual_label:
+        cd = _prompt_optional_dir_path(runtime, _tr(runtime, "prompt.config_dir"))
+
+    created_dir: Path | None = None
+    if auto_oc or auto_tc or auto_cd:
+        result = create_profile_directory(
+            runtime.config_root,
+            profile_name,
+            create_opencode_config=auto_oc,
+            create_tui_config=auto_tc,
+            create_config_dir=auto_cd,
+        )
+        created_dir = profiles_base_path(runtime.config_root) / profile_name
+        runtime.io.echo(_tr(runtime, "result.auto_created_dir", path=created_dir))
+        oc = oc or result.opencode_config
+        tc = tc or result.tui_config
+        cd = cd or result.config_dir
+
+    return oc, tc, cd, created_dir
 
 
 def _active_profile_or_none(config: OpencodeEnvSwitchConfig) -> ProfileConfig | None:

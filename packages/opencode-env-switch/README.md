@@ -51,6 +51,8 @@
 agent-kit opencode-env-switch init zsh
 agent-kit opencode-env-switch profile list
 agent-kit opencode-env-switch profile add --name work --opencode-config /path/to/opencode.jsonc
+agent-kit opencode-env-switch profile add --name work --auto-create
+agent-kit opencode-env-switch profile add --name work --auto-create --tui-config /path/to/tui.json
 agent-kit opencode-env-switch profile update --name work --description "new description"
 agent-kit opencode-env-switch profile remove --name work
 agent-kit opencode-env-switch switch --name work
@@ -58,6 +60,21 @@ agent-kit opencode-env-switch export --name work --shell zsh
 agent-kit opencode-env-switch status
 agent-kit opencode-env-switch wizard
 ```
+
+### profile add --auto-create
+
+`--auto-create` 选项会在插件受管目录下自动创建 profile 配置文件和目录：
+
+```text
+~/.config/agent-kit/plugins/opencode-env-switch/profiles/<name>/
+├── opencode.jsonc    (带注释的配置模板)
+├── tui.json          (最小配置模板)
+└── config/           (配置目录)
+```
+
+- 单独使用 `--auto-create` 时，三个路径全部自动创建
+- 可与 `--opencode-config`、`--tui-config`、`--config-dir` 组合：已手动指定的路径不自动创建，其余自动创建
+- 不带 `--auto-create` 且不带路径参数时，进入交互模式，对每个路径可选择"自动创建"、"输入已有路径"或"跳过"
 
 ### wizard 命令
 
@@ -67,8 +84,9 @@ agent-kit opencode-env-switch wizard
 2. 询问是否初始化 zsh 集成
 3. 询问是否创建第一个 profile
 4. 引导输入 profile 名称、描述
-5. 引导配置 opencode_config、tui_config、config_dir 路径
-6. 确认并保存配置
+5. 选择配置路径方式：自动创建（推荐）或手动输入路径
+6. 根据所选方式配置 opencode_config、tui_config、config_dir
+7. 确认并保存配置
 
 ## CLI 语言
 
@@ -82,7 +100,8 @@ agent-kit opencode-env-switch wizard
 ## 行为约束
 
 - v1 只支持 zsh，不处理 bash/fish
-- profile 只引用外部路径，不复制配置资产
+- profile 可引用外部路径，也可通过 `--auto-create` 在受管目录下自动创建
+- 自动创建的 profile 文件统一位于 `~/.config/agent-kit/plugins/opencode-env-switch/profiles/<name>/`
 - 每个 profile 至少要声明 `opencode_config`、`tui_config`、`config_dir` 中的一项
 - `switch` 和 `export` 会校验 profile 中所有已声明路径
 - 切换时对未声明的受管变量显式 `unset`，避免旧 profile 残留

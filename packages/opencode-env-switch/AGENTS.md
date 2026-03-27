@@ -61,7 +61,13 @@ core 侧当前还提供固定短名 alias：
 ## 4. 业务规则
 
 - v1 只支持 zsh，不处理 bash/fish
-- profile 只保存外部路径引用，不复制配置资产
+- profile 可保存外部路径引用，也可通过 `--auto-create` 在受管目录下自动创建配置文件
+- 自动创建的 profile 文件统一位于 `{config_root}/plugins/opencode-env-switch/profiles/<name>/`
+- 自动创建的目录结构包含 `opencode.jsonc`（带注释模板）、`tui.json`（最小模板）、`config/`（空目录）
+- 若 `profiles/<name>/` 目录已存在则拒绝自动创建
+- `profile add --auto-create` 支持与手动路径参数混合使用
+- 交互模式下对每个路径提供"自动创建 / 输入已有路径 / 跳过"三选一
+- wizard 在配置路径前先让用户选择"自动创建"或"手动输入"模式
 - 每个 profile 至少声明一个受管路径
 - 受管环境变量仅包括：
   - `OPENCODE_CONFIG`
@@ -80,6 +86,10 @@ core 侧当前还提供固定短名 alias：
 
 - `init zsh` 是否正确创建/更新受管 `active.zsh` 与 `.zshrc` marker block
 - `profile add/update/remove/list` 是否正确维护 profile 注册表
+- `profile add --auto-create` 是否正确在受管目录下创建模板文件
+- `profile add --auto-create` 与手动路径混合时是否只自动创建未指定的路径
+- 自动创建失败（如 profile 重名）时是否回滚已创建的目录
+- wizard 的自动创建模式是否正确生成文件并记录路径
 - `switch` 是否正确更新 `active_profile` 并输出完整 `export`/`unset`
 - `export` 是否输出可直接用于 zsh 的 shell 片段
 - `status` 是否正确反映 zsh 接入状态、受管文件状态和 profile 路径有效性

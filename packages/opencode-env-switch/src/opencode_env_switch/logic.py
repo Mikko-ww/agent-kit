@@ -9,7 +9,18 @@ from opencode_env_switch.config import (
     ProfileConfig,
     ShellsConfig,
     ZshShellConfig,
+    profiles_base_path,
 )
+
+OPENCODE_CONFIG_TEMPLATE = """\
+// OpenCode configuration file
+// See https://opencode.ai for documentation
+{
+  // Add your OpenCode configuration here
+}
+"""
+
+TUI_CONFIG_TEMPLATE = "{}\n"
 
 ZSH_MARKER_BEGIN = "# >>> agent-kit opencode-env-switch >>>"
 ZSH_MARKER_END = "# <<< agent-kit opencode-env-switch <<<"
@@ -32,6 +43,50 @@ class ZshIntegrationStatus:
     rc_exists: bool
     block_present: bool
     source_exists: bool
+
+
+@dataclass(slots=True, frozen=True)
+class AutoCreateResult:
+    opencode_config: Path | None
+    tui_config: Path | None
+    config_dir: Path | None
+
+
+def create_profile_directory(
+    config_root: Path,
+    profile_name: str,
+    *,
+    create_opencode_config: bool = False,
+    create_tui_config: bool = False,
+    create_config_dir: bool = False,
+) -> AutoCreateResult:
+    profile_dir = profiles_base_path(config_root) / profile_name
+    if profile_dir.exists():
+        raise ValueError(f"profile directory already exists: {profile_dir}")
+
+    profile_dir.mkdir(parents=True, exist_ok=True)
+
+    opencode_config_path: Path | None = None
+    tui_config_path: Path | None = None
+    config_dir_path: Path | None = None
+
+    if create_opencode_config:
+        opencode_config_path = profile_dir / "opencode.jsonc"
+        opencode_config_path.write_text(OPENCODE_CONFIG_TEMPLATE, encoding="utf-8")
+
+    if create_tui_config:
+        tui_config_path = profile_dir / "tui.json"
+        tui_config_path.write_text(TUI_CONFIG_TEMPLATE, encoding="utf-8")
+
+    if create_config_dir:
+        config_dir_path = profile_dir / "config"
+        config_dir_path.mkdir(parents=True, exist_ok=True)
+
+    return AutoCreateResult(
+        opencode_config=opencode_config_path,
+        tui_config=tui_config_path,
+        config_dir=config_dir_path,
+    )
 
 
 def render_zsh_env(profile: ProfileConfig | None) -> str:

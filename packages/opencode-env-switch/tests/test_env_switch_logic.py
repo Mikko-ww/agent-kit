@@ -87,6 +87,61 @@ def test_install_or_update_zsh_integration_is_idempotent(tmp_path: Path):
     assert f'source "{source_file}"' in content
 
 
+def test_create_profile_directory_creates_all_three(tmp_path: Path):
+    logic_module = require_module("opencode_env_switch.logic")
+    config_root = tmp_path / "config"
+
+    result = logic_module.create_profile_directory(
+        config_root,
+        "work",
+        create_opencode_config=True,
+        create_tui_config=True,
+        create_config_dir=True,
+    )
+
+    assert result.opencode_config is not None
+    assert result.tui_config is not None
+    assert result.config_dir is not None
+    assert result.opencode_config.exists() and result.opencode_config.is_file()
+    assert result.tui_config.exists() and result.tui_config.is_file()
+    assert result.config_dir.exists() and result.config_dir.is_dir()
+    assert result.opencode_config.name == "opencode.jsonc"
+    assert result.tui_config.name == "tui.json"
+    assert result.config_dir.name == "config"
+    assert "OpenCode configuration" in result.opencode_config.read_text(encoding="utf-8")
+    assert result.tui_config.read_text(encoding="utf-8").strip() == "{}"
+
+
+def test_create_profile_directory_partial(tmp_path: Path):
+    logic_module = require_module("opencode_env_switch.logic")
+    config_root = tmp_path / "config"
+
+    result = logic_module.create_profile_directory(
+        config_root,
+        "dev",
+        create_opencode_config=True,
+        create_tui_config=False,
+        create_config_dir=False,
+    )
+
+    assert result.opencode_config is not None and result.opencode_config.exists()
+    assert result.tui_config is None
+    assert result.config_dir is None
+
+
+def test_create_profile_directory_rejects_existing(tmp_path: Path):
+    logic_module = require_module("opencode_env_switch.logic")
+    config_module = require_module("opencode_env_switch.config")
+    config_root = tmp_path / "config"
+    profile_dir = config_module.profiles_base_path(config_root) / "existing"
+    profile_dir.mkdir(parents=True)
+
+    with pytest.raises(ValueError, match="already exists"):
+        logic_module.create_profile_directory(
+            config_root, "existing", create_opencode_config=True,
+        )
+
+
 def test_remove_profile_rejects_active_profile(tmp_path: Path):
     config_module = require_module("opencode_env_switch.config")
     logic_module = require_module("opencode_env_switch.logic")
