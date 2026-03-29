@@ -9,6 +9,7 @@
 - `link` / `unlink` / `list` / `status` 默认作用全部 target
 - 支持用 `--target <name>` 精确限制命令作用范围
 - 提供 `target add/list/update/remove` 管理 target 注册表
+- 提供 `wizard` 交互式配置向导，便于初始化或调整 source / target 配置
 
 ## 配置文件
 
@@ -44,6 +45,7 @@
 
 ```bash
 agent-kit skills-link init
+agent-kit skills-link wizard
 agent-kit skills-link list
 agent-kit skills-link list --target codex
 agent-kit skills-link link
@@ -61,6 +63,28 @@ agent-kit skills-link target update --name codex --new-name codex-dev
 agent-kit skills-link target update --name codex --path /new/path/to/codex/skills
 agent-kit skills-link target remove --name codex
 ```
+
+### wizard 命令
+
+`wizard` 是 `skills-link` 的统一交互式配置入口：
+
+```bash
+agent-kit skills-link wizard
+```
+
+- 当插件尚未配置时，`wizard` 会直接进入首次初始化流程
+- 当配置已存在时，`wizard` 会先显示菜单，可用于：
+  1. 更新 `source_dir`
+  2. 新增 target
+  3. 更新已有 target 的名称或路径
+  4. 移除 target
+  5. 查看当前状态后退出
+
+`wizard` 内部仍然复用现有配置校验逻辑：
+
+- `source_dir` 必须是可读目录
+- target 路径不存在时可在交互中直接创建
+- target 改路径、移除 target 时，仍会沿用现有受管链接保护规则
 
 ## CLI 语言
 

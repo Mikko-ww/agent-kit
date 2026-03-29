@@ -5,6 +5,7 @@ import logging
 from collections import deque
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Sequence
 
 import pytest
 import typer
@@ -26,10 +27,11 @@ def write_skill(base: Path, name: str) -> Path:
 
 
 class FakeIO:
-    def __init__(self, *, text_answers=(), confirm_answers=(), multi_answers=()):
+    def __init__(self, *, text_answers=(), confirm_answers=(), multi_answers=(), select_answers=()):
         self._text_answers = deque(text_answers)
         self._confirm_answers = deque(confirm_answers)
         self._multi_answers = deque(multi_answers)
+        self._select_answers = deque(select_answers)
 
     def echo(self, message: str) -> None:
         typer.echo(message)
@@ -56,6 +58,13 @@ class FakeIO:
         if self._multi_answers:
             return list(self._multi_answers.popleft())
         return []
+
+    def select_one(self, message: str, choices: Sequence[str]):
+        if self._select_answers:
+            return self._select_answers.popleft()
+        if choices:
+            return choices[0]
+        raise AssertionError(f"missing select answer for: {message}")
 
 
 def build_app(tmp_path: Path, io: FakeIO):
@@ -105,6 +114,7 @@ def test_help_uses_zh_cn_for_root_and_target_commands(tmp_path: Path, monkeypatc
     assert root_help.exit_code == 0
     assert "把本地 skills 链接到一个或多个目标目录。" in root_help.output
     assert "查看当前 skill 链接状态。" in root_help.output
+    assert "交互式配置向导。" in root_help.output
     assert target_help.exit_code == 0
     assert "管理已登记的目标目录。" in target_help.output
     assert "新增一个目标目录。" in target_help.output
@@ -332,3 +342,118 @@ def test_target_add_rejects_duplicate_name(tmp_path: Path):
 
     assert result.exit_code == 1
     assert "duplicate target name: codex" in result.output
+
+
+def test_wizard_runs_init_flow_when_not_configured(tmp_path: Path):
+    source_dir = tmp_path / "skills"
+    target_dir = tmp_path / "codex"
+    source_dir.mkdir()
+    write_skill(source_dir, "alpha")
+    app = build_app(
+        tmp_path,
+        FakeIO(
+            text_answers=[str(source_dir), "codex", str(target_dir)],
+            confirm_answers=[True],
+        ),
+    )
+
+    result = CliRunner().invoke(app, ["wizard"])
+
+    assert result.exit_code == 0
+    assert "Configuration updated." in result.output
+    config_module = require_module("skills_link.config")
+    loaded = config_module.load_config(tmp_path / "config")
+    assert loaded is not None
+    assert loaded.source_dir == source_dir
+    assert [(target.name, target.path) for target in loaded.targets] == [("codex", target_dir)]
+
+
+def test_wizard_can_add_target_from_menu(tmp_path: Path):
+    source_dir = tmp_path / "skills"
+    source_dir.mkdir()
+    codex_dir = tmp_path / "codex"
+    codex_dir.mkdir()
+    claude_dir = tmp_path / "claude"
+    save_config(tmp_path, source_dir, [("codex", codex_dir)])
+    app = build_app(
+        tmp_path,
+        FakeIO(
+            text_answers=["claude", str(claude_dir)],
+            confirm_answers=[True],
+            select_answers=["Add target directory"],
+        ),
+    )
+
+    result = CliRunner().invoke(app, ["wizard"])
+
+    assert result.exit_code == 0
+    config_module = require_module("skills_link.config")
+    loaded = config_module.load_config(tmp_path / "config")
+    assert loaded is not None
+    assert [(target.name, target.path) for target in loaded.targets] == [
+        ("codex", codex_dir),
+        ("claude", claude_dir),
+    ]
+
+
+def test_wizard_can_update_source_dir_and_target_under_zh_locale(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("AGENT_KIT_LANG", raising=False)
+    monkeypatch.setenv("LANG", "zh_CN.UTF-8")
+    old_source = tmp_path / "skills-old"
+    new_source = tmp_path / "skills-new"
+    old_source.mkdir()
+    new_source.mkdir()
+    codex_dir = tmp_path / "codex"
+    codex_dir.mkdir()
+    next_dir = tmp_path / "anthropic"
+    save_config(tmp_path, old_source, [("codex", codex_dir)])
+
+    update_source_app = build_app(
+        tmp_path,
+        FakeIO(
+            text_answers=[str(new_source)],
+            select_answers=["Update source directory"],
+        ),
+    )
+    update_source_result = CliRunner().invoke(update_source_app, ["wizard"])
+
+    assert update_source_result.exit_code == 0
+
+    update_target_app = build_app(
+        tmp_path,
+        FakeIO(
+            text_answers=["anthropic", str(next_dir)],
+            confirm_answers=[True],
+            select_answers=["Update existing target", "codex"],
+        ),
+    )
+    update_target_result = CliRunner().invoke(update_target_app, ["wizard"])
+
+    assert update_target_result.exit_code == 0
+    config_module = require_module("skills_link.config")
+    loaded = config_module.load_config(tmp_path / "config")
+    assert loaded is not None
+    assert loaded.source_dir == new_source
+    assert [(target.name, target.path) for target in loaded.targets] == [("anthropic", next_dir)]
+
+
+def test_wizard_can_remove_target_from_menu(tmp_path: Path):
+    source_dir = tmp_path / "skills"
+    source_dir.mkdir()
+    codex_dir = tmp_path / "codex"
+    claude_dir = tmp_path / "claude"
+    codex_dir.mkdir()
+    claude_dir.mkdir()
+    save_config(tmp_path, source_dir, [("codex", codex_dir), ("claude", claude_dir)])
+    app = build_app(
+        tmp_path,
+        FakeIO(select_answers=["Remove target directory", "claude"]),
+    )
+
+    result = CliRunner().invoke(app, ["wizard"])
+
+    assert result.exit_code == 0
+    config_module = require_module("skills_link.config")
+    loaded = config_module.load_config(tmp_path / "config")
+    assert loaded is not None
+    assert [(target.name, target.path) for target in loaded.targets] == [("codex", codex_dir)]
