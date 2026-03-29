@@ -584,12 +584,12 @@ def _exit_with_error(runtime: PluginRuntime, exc: ValueError) -> None:
     raise typer.Exit(code=1) from exc
 
 
-def _resolve_choice_key(selection: str, *keys: str) -> str | None:
+def _resolve_choice_key(selection: str, *keys: str) -> str:
     for key in keys:
         for language in ("en", "zh-CN"):
             if selection == translate(language, key):
                 return key
-    return None
+    raise ValueError(f"unknown wizard action: {selection}")
 
 
 def _format_yes_no(value: bool, runtime: PluginRuntime | None = None) -> str:

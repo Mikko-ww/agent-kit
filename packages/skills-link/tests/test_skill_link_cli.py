@@ -5,6 +5,7 @@ import logging
 from collections import deque
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Sequence
 
 import pytest
 import typer
@@ -58,7 +59,7 @@ class FakeIO:
             return list(self._multi_answers.popleft())
         return []
 
-    def select_one(self, message: str, choices):
+    def select_one(self, message: str, choices: Sequence[str]):
         if self._select_answers:
             return self._select_answers.popleft()
         if choices:
