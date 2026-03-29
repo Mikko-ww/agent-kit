@@ -43,6 +43,8 @@ class InteractiveIO(Protocol):
 
     def confirm(self, message: str, default: bool = False) -> bool: ...
 
+    def select_one(self, message: str, choices: Sequence[str]) -> str: ...
+
     def select_many(self, message: str, choices: Sequence[str]) -> list[str]: ...
 
 
@@ -68,6 +70,15 @@ class QuestionaryIO:
         if answer is None:
             raise typer.Abort()
         return bool(answer)
+
+    def select_one(self, message: str, choices: Sequence[str]) -> str:
+        answer = questionary.select(
+            message,
+            choices=[questionary.Choice(title=choice, value=choice) for choice in choices],
+        ).ask()
+        if answer is None:
+            raise typer.Abort()
+        return str(answer)
 
     def select_many(self, message: str, choices: Sequence[str]) -> list[str]:
         answer = questionary.checkbox(
@@ -137,6 +148,66 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
     def init_command() -> None:
         runtime = runtime_factory()
         _run_init(runtime)
+
+    @app.command("wizard", help=_t(language, "wizard.help"))
+    def wizard_command() -> None:
+        runtime = runtime_factory()
+        runtime.io.echo(_tr(runtime, "wizard.welcome"))
+        runtime.io.echo(_tr(runtime, "wizard.welcome_detail"))
+        runtime.io.echo("")
+
+        config = load_config(runtime.config_root)
+        if config is None:
+            runtime.io.warn(_tr(runtime, "warning.not_configured"))
+            _run_init(runtime)
+            runtime.io.echo(_tr(runtime, "wizard.completed"))
+            return
+
+        action = runtime.io.select_one(
+            _tr(runtime, "wizard.menu.prompt"),
+            [
+                _tr(runtime, "wizard.menu.update_source"),
+                _tr(runtime, "wizard.menu.add_target"),
+                _tr(runtime, "wizard.menu.update_target"),
+                _tr(runtime, "wizard.menu.remove_target"),
+                _tr(runtime, "wizard.menu.show_status"),
+            ],
+        )
+
+        try:
+            action_key = _resolve_choice_key(
+                action,
+                "wizard.menu.update_source",
+                "wizard.menu.add_target",
+                "wizard.menu.update_target",
+                "wizard.menu.remove_target",
+                "wizard.menu.show_status",
+            )
+            if action_key == "wizard.menu.show_status":
+                source_available = config.source_dir.exists() and config.source_dir.is_dir()
+                runtime.io.echo(_tr(runtime, "label.source_dir", value=config.source_dir))
+                runtime.io.echo(_tr(runtime, "label.source_available", value=_format_yes_no(source_available, runtime)))
+                summaries = _load_target_summaries(config, (), source_available=source_available)
+                runtime.io.echo(_tr(runtime, "label.targets", value=len(summaries)))
+                for summary in summaries:
+                    _echo_target_summary(runtime, summary)
+                return
+            if action_key == "wizard.menu.update_source":
+                updated = _wizard_update_source_dir(runtime, config)
+            elif action_key == "wizard.menu.add_target":
+                updated = _wizard_add_target(runtime, config)
+            elif action_key == "wizard.menu.update_target":
+                updated = _wizard_update_target(runtime, config)
+            elif action_key == "wizard.menu.remove_target":
+                updated = _wizard_remove_target(runtime, config)
+            else:
+                raise ValueError(f"unknown wizard action: {action}")
+            saved_path = save_config(runtime.config_root, updated)
+        except ValueError as exc:
+            _exit_with_error(runtime, exc)
+
+        runtime.io.echo(_tr(runtime, "saved.config", path=saved_path))
+        runtime.io.echo(_tr(runtime, "wizard.completed"))
 
     @app.command("list", help=_t(language, "list.help"))
     def list_command(
@@ -318,6 +389,30 @@ def _run_init(runtime: PluginRuntime) -> SkillLinkConfig:
     return config
 
 
+def _wizard_update_source_dir(runtime: PluginRuntime, config: SkillLinkConfig) -> SkillLinkConfig:
+    source_dir = _prompt_for_source_dir(runtime, config.source_dir)
+    return SkillLinkConfig(source_dir=source_dir, targets=list(config.targets))
+
+
+def _wizard_add_target(runtime: PluginRuntime, config: SkillLinkConfig) -> SkillLinkConfig:
+    target_name = _prompt_for_target_name(runtime, None)
+    target_path = _prompt_for_target_path(runtime, None)
+    return add_target(config, TargetConfig(name=target_name, path=target_path))
+
+
+def _wizard_update_target(runtime: PluginRuntime, config: SkillLinkConfig) -> SkillLinkConfig:
+    selected_name = _select_target_name(runtime, config)
+    target = next(item for item in config.targets if item.name == selected_name)
+    new_name = _prompt_for_target_name(runtime, target.name)
+    new_path = _prompt_for_target_path(runtime, target.path)
+    return update_target(config, selected_name, new_name=new_name, new_path=new_path)
+
+
+def _wizard_remove_target(runtime: PluginRuntime, config: SkillLinkConfig) -> SkillLinkConfig:
+    selected_name = _select_target_name(runtime, config)
+    return remove_target(config, selected_name)
+
+
 def _prompt_for_source_dir(runtime: PluginRuntime, default: Path | None) -> Path:
     while True:
         value = runtime.io.prompt_text(
@@ -354,6 +449,13 @@ def _prompt_for_target_path(runtime: PluginRuntime, default: Path | None) -> Pat
             return _prepare_target_path(runtime, target_path)
         except ValueError as exc:
             runtime.io.error(str(exc))
+
+
+def _select_target_name(runtime: PluginRuntime, config: SkillLinkConfig) -> str:
+    return runtime.io.select_one(
+        _tr(runtime, "prompt.select_target"),
+        [target.name for target in config.targets],
+    )
 
 
 def _prepare_target_path(runtime: PluginRuntime, target_path: Path) -> Path:
@@ -480,6 +582,14 @@ def _normalize_path_text(value: str) -> str:
 def _exit_with_error(runtime: PluginRuntime, exc: ValueError) -> None:
     runtime.io.error(str(exc))
     raise typer.Exit(code=1) from exc
+
+
+def _resolve_choice_key(selection: str, *keys: str) -> str | None:
+    for key in keys:
+        for language in ("en", "zh-CN"):
+            if selection == translate(language, key):
+                return key
+    return None
 
 
 def _format_yes_no(value: bool, runtime: PluginRuntime | None = None) -> str:
