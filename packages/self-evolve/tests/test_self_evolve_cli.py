@@ -74,15 +74,18 @@ def build_app(tmp_path: Path, io: FakeIO):
     return plugin_cli.build_app(runtime_factory=lambda: runtime)
 
 
-def setup_config(tmp_path: Path):
+def setup_project(tmp_path: Path):
+    """创建已初始化的项目结构。"""
     config_module = require_module("self_evolve.config")
     config = config_module.SelfEvolveConfig(
-        skills_target_dir=tmp_path / "skills",
+        targets=["cursor", "copilot", "codex"],
         promotion_threshold=3,
         promotion_window_days=30,
         min_task_count=2,
     )
-    config_module.save_config(tmp_path / "config", config)
+    config_module.save_config(tmp_path, config)
+    # 创建 .self-evolve 目录
+    (tmp_path / ".self-evolve").mkdir(exist_ok=True)
     return config
 
 
@@ -97,34 +100,37 @@ class TestPluginMetadata:
         data = json.loads(result.output)
         assert data["plugin_id"] == "self-evolve"
         assert data["api_version"] == 1
-        assert data["config_version"] == 1
+        assert data["config_version"] == 2
         assert "installed_version" in data
 
 
-class TestWizard:
-    def test_wizard_initializes_config(self, tmp_path: Path):
-        io = FakeIO(text_answers=[str(tmp_path / "my-skills"), "3", "30", "2"])
+class TestInit:
+    def test_init_creates_project(self, tmp_path: Path):
+        io = FakeIO(
+            multi_answers=[["cursor", "copilot"]],
+            text_answers=["3", "2"],
+        )
         app = build_app(tmp_path, io)
-        result = runner.invoke(app, ["wizard"])
+        result = runner.invoke(app, ["init"])
         assert result.exit_code == 0
-        assert "config" in result.output.lower() or "wizard" in result.output.lower()
+        assert "cursor" in result.output.lower() or "copilot" in result.output.lower()
 
         config_module = require_module("self_evolve.config")
-        loaded = config_module.load_config(tmp_path / "config")
+        loaded = config_module.load_config(tmp_path)
         assert loaded is not None
-        assert loaded.skills_target_dir == tmp_path / "my-skills"
+        assert "cursor" in loaded.targets
 
-    def test_wizard_shows_completed_when_configured(self, tmp_path: Path):
-        setup_config(tmp_path)
+    def test_init_warns_when_already_initialized(self, tmp_path: Path):
+        setup_project(tmp_path)
         io = FakeIO()
         app = build_app(tmp_path, io)
-        result = runner.invoke(app, ["wizard"])
+        result = runner.invoke(app, ["init"])
         assert result.exit_code == 0
 
 
 class TestCapture:
     def test_capture_creates_learning(self, tmp_path: Path):
-        setup_config(tmp_path)
+        setup_project(tmp_path)
         io = FakeIO()
         app = build_app(tmp_path, io)
         result = runner.invoke(app, [
@@ -137,8 +143,8 @@ class TestCapture:
         assert result.exit_code == 0
         assert "L-" in result.output
 
-    def test_capture_triggers_init_when_not_configured(self, tmp_path: Path):
-        io = FakeIO(text_answers=[str(tmp_path / "skills"), "3", "30", "2"])
+    def test_capture_warns_when_not_initialized(self, tmp_path: Path):
+        io = FakeIO()
         app = build_app(tmp_path, io)
         result = runner.invoke(app, [
             "capture",
@@ -146,11 +152,12 @@ class TestCapture:
             "--domain", "testing",
         ])
         assert result.exit_code == 0
+        assert "init" in result.output.lower() or "初始化" in result.output
 
 
 class TestList:
     def test_list_shows_entries(self, tmp_path: Path):
-        setup_config(tmp_path)
+        setup_project(tmp_path)
         io = FakeIO()
         app = build_app(tmp_path, io)
 
@@ -163,14 +170,14 @@ class TestList:
         assert "Learning 2" in result.output
 
     def test_list_shows_warning_when_empty(self, tmp_path: Path):
-        setup_config(tmp_path)
+        setup_project(tmp_path)
         io = FakeIO()
         app = build_app(tmp_path, io)
         result = runner.invoke(app, ["list"])
         assert result.exit_code == 0
 
     def test_list_filters_by_domain(self, tmp_path: Path):
-        setup_config(tmp_path)
+        setup_project(tmp_path)
         io = FakeIO()
         app = build_app(tmp_path, io)
 
@@ -185,7 +192,7 @@ class TestList:
 
 class TestAnalyze:
     def test_analyze_detects_patterns(self, tmp_path: Path):
-        setup_config(tmp_path)
+        setup_project(tmp_path)
         io = FakeIO()
         app = build_app(tmp_path, io)
 
@@ -197,7 +204,7 @@ class TestAnalyze:
         assert "env-issue" in result.output
 
     def test_analyze_no_patterns(self, tmp_path: Path):
-        setup_config(tmp_path)
+        setup_project(tmp_path)
         io = FakeIO()
         app = build_app(tmp_path, io)
         result = runner.invoke(app, ["analyze"])
@@ -206,7 +213,7 @@ class TestAnalyze:
 
 class TestPromote:
     def test_promote_creates_rule(self, tmp_path: Path):
-        setup_config(tmp_path)
+        setup_project(tmp_path)
 
         storage = require_module("self_evolve.storage")
         models = require_module("self_evolve.models")
@@ -220,7 +227,7 @@ class TestPromote:
             recurrence_count=5,
             task_ids=["t1", "t2", "t3"],
         )
-        storage.save_learning(tmp_path / "data", entry)
+        storage.save_learning(tmp_path, entry)
 
         io = FakeIO()
         app = build_app(tmp_path, io)
@@ -229,7 +236,7 @@ class TestPromote:
         assert "R-" in result.output
 
     def test_promote_warns_for_missing_entry(self, tmp_path: Path):
-        setup_config(tmp_path)
+        setup_project(tmp_path)
         io = FakeIO()
         app = build_app(tmp_path, io)
         result = runner.invoke(app, ["promote", "L-nonexistent", "--rule", "test"])
@@ -237,43 +244,97 @@ class TestPromote:
         assert "not found" in result.output.lower() or "未找到" in result.output
 
 
-class TestExtractSkill:
-    def test_extract_skill_creates_skill_md(self, tmp_path: Path):
-        setup_config(tmp_path)
+class TestSync:
+    def test_sync_writes_agent_files(self, tmp_path: Path):
+        setup_project(tmp_path)
 
         storage = require_module("self_evolve.storage")
         models = require_module("self_evolve.models")
-        entry = models.LearningEntry(
+        rules = [
+            models.PromotedRule(
+                id="R-001",
+                source_learning_id="L-001",
+                rule="Always validate inputs",
+                domain="security",
+                created_at="2026-03-30T12:00:00Z",
+            ),
+        ]
+        storage.save_rules(tmp_path, rules)
+
+        io = FakeIO()
+        app = build_app(tmp_path, io)
+        result = runner.invoke(app, ["sync"])
+        assert result.exit_code == 0
+        assert "cursor" in result.output.lower() or "copilot" in result.output.lower()
+
+        assert (tmp_path / ".cursor" / "rules" / "self-evolve.mdc").exists()
+
+    def test_sync_with_no_rules(self, tmp_path: Path):
+        setup_project(tmp_path)
+        io = FakeIO()
+        app = build_app(tmp_path, io)
+        result = runner.invoke(app, ["sync"])
+        assert result.exit_code == 0
+
+
+class TestEvolve:
+    def test_evolve_runs_full_cycle(self, tmp_path: Path):
+        config_module = require_module("self_evolve.config")
+        config = config_module.SelfEvolveConfig(
+            targets=["cursor"],
+            promotion_threshold=2,
+            min_task_count=2,
+        )
+        config_module.save_config(tmp_path, config)
+        (tmp_path / ".self-evolve").mkdir(exist_ok=True)
+
+        storage = require_module("self_evolve.storage")
+        models = require_module("self_evolve.models")
+        e1 = models.LearningEntry(
             id="L-20260330-001",
             timestamp="2026-03-30T12:00:00Z",
             priority="high",
-            status="resolved",
+            status="active",
             domain="debugging",
-            summary="Validate env vars",
-            detail="Missing env vars cause startup failures.",
+            summary="Check env vars",
+            pattern_key="env-check",
+            recurrence_count=3,
+            task_ids=["t1", "t2"],
         )
-        storage.save_learning(tmp_path / "data", entry)
+        e2 = models.LearningEntry(
+            id="L-20260330-002",
+            timestamp="2026-03-30T12:01:00Z",
+            priority="high",
+            status="active",
+            domain="debugging",
+            summary="Also check env vars",
+            pattern_key="env-check",
+            recurrence_count=3,
+            task_ids=["t1", "t2"],
+        )
+        storage.save_learning(tmp_path, e1)
+        storage.save_learning(tmp_path, e2)
 
         io = FakeIO()
         app = build_app(tmp_path, io)
-        result = runner.invoke(app, ["extract-skill", "L-20260330-001", "--name", "env-validator"])
+        result = runner.invoke(app, ["evolve"])
         assert result.exit_code == 0
+        assert "R-" in result.output
 
-        skill_dir = tmp_path / "skills" / "env-validator"
-        assert skill_dir.exists()
-        assert (skill_dir / "SKILL.md").exists()
-
-    def test_extract_skill_warns_for_missing_entry(self, tmp_path: Path):
-        setup_config(tmp_path)
+    def test_evolve_no_eligible(self, tmp_path: Path):
+        setup_project(tmp_path)
         io = FakeIO()
         app = build_app(tmp_path, io)
-        result = runner.invoke(app, ["extract-skill", "L-nonexistent", "--name", "test"])
+
+        runner.invoke(app, ["capture", "-s", "Single learning", "-d", "testing"])
+
+        result = runner.invoke(app, ["evolve"])
         assert result.exit_code == 0
 
 
 class TestStatus:
     def test_status_shows_overview(self, tmp_path: Path):
-        setup_config(tmp_path)
+        setup_project(tmp_path)
         io = FakeIO()
         app = build_app(tmp_path, io)
 
@@ -285,7 +346,7 @@ class TestStatus:
         assert "2" in result.output
 
     def test_status_empty(self, tmp_path: Path):
-        setup_config(tmp_path)
+        setup_project(tmp_path)
         io = FakeIO()
         app = build_app(tmp_path, io)
         result = runner.invoke(app, ["status"])
@@ -300,7 +361,7 @@ class TestHelp:
         app = build_app(tmp_path, io)
         result = runner.invoke(app, ["--help"])
         assert result.exit_code == 0
-        assert "self-evolving" in result.output.lower() or "capture" in result.output.lower()
+        assert "project" in result.output.lower() or "capture" in result.output.lower()
 
     def test_help_in_chinese(self, tmp_path: Path, monkeypatch):
         monkeypatch.setenv("AGENT_KIT_LANG", "zh-CN")

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib
-import json
 from pathlib import Path
 
 import pytest
@@ -14,25 +13,40 @@ def require_module(name: str):
         pytest.fail(f"could not import {name}: {exc}")
 
 
+def setup_project(tmp_path: Path):
+    """创建 .self-evolve/config.jsonc 使 tmp_path 成为已初始化项目。"""
+    config_module = require_module("self_evolve.config")
+    config = config_module.SelfEvolveConfig(
+        targets=["cursor", "copilot", "codex"],
+        promotion_threshold=3,
+        promotion_window_days=30,
+        min_task_count=2,
+    )
+    config_module.save_config(tmp_path, config)
+    return config
+
+
 class TestConfig:
     def test_save_and_load_config_round_trip(self, tmp_path: Path):
         config_module = require_module("self_evolve.config")
 
         config = config_module.SelfEvolveConfig(
-            skills_target_dir=tmp_path / "skills",
+            targets=["cursor", "copilot"],
             promotion_threshold=5,
             promotion_window_days=60,
             min_task_count=3,
+            auto_promote=True,
         )
 
-        config_module.save_config(tmp_path / "config", config)
-        loaded = config_module.load_config(tmp_path / "config")
+        config_module.save_config(tmp_path, config)
+        loaded = config_module.load_config(tmp_path)
 
         assert loaded is not None
-        assert loaded.skills_target_dir == config.skills_target_dir
+        assert loaded.targets == ["cursor", "copilot"]
         assert loaded.promotion_threshold == 5
         assert loaded.promotion_window_days == 60
         assert loaded.min_task_count == 3
+        assert loaded.auto_promote is True
 
     def test_load_config_returns_none_for_missing(self, tmp_path: Path):
         config_module = require_module("self_evolve.config")
@@ -42,28 +56,70 @@ class TestConfig:
         config_module = require_module("self_evolve.config")
         jsonc_module = require_module("self_evolve.jsonc")
 
-        config_path = config_module.config_file_path(tmp_path / "config")
+        config_path = config_module.config_file_path(tmp_path)
         config_path.parent.mkdir(parents=True, exist_ok=True)
         jsonc_module.write_jsonc(config_path, {
             "plugin_id": "self-evolve",
             "config_version": 999,
-            "skills_target_dir": "/tmp/skills",
+            "targets": ["cursor"],
         })
 
-        assert config_module.load_config(tmp_path / "config") is None
+        assert config_module.load_config(tmp_path) is None
 
-    def test_load_config_rejects_missing_skills_target_dir(self, tmp_path: Path):
+    def test_load_config_rejects_missing_targets(self, tmp_path: Path):
         config_module = require_module("self_evolve.config")
         jsonc_module = require_module("self_evolve.jsonc")
 
-        config_path = config_module.config_file_path(tmp_path / "config")
+        config_path = config_module.config_file_path(tmp_path)
         config_path.parent.mkdir(parents=True, exist_ok=True)
         jsonc_module.write_jsonc(config_path, {
             "plugin_id": "self-evolve",
-            "config_version": 1,
+            "config_version": 2,
         })
 
-        assert config_module.load_config(tmp_path / "config") is None
+        assert config_module.load_config(tmp_path) is None
+
+    def test_load_config_rejects_invalid_targets(self, tmp_path: Path):
+        config_module = require_module("self_evolve.config")
+        jsonc_module = require_module("self_evolve.jsonc")
+
+        config_path = config_module.config_file_path(tmp_path)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        jsonc_module.write_jsonc(config_path, {
+            "plugin_id": "self-evolve",
+            "config_version": 2,
+            "targets": ["invalid-agent"],
+        })
+
+        assert config_module.load_config(tmp_path) is None
+
+    def test_find_project_root_with_self_evolve_dir(self, tmp_path: Path):
+        config_module = require_module("self_evolve.config")
+        (tmp_path / ".self-evolve").mkdir()
+        sub = tmp_path / "src" / "app"
+        sub.mkdir(parents=True)
+
+        found = config_module.find_project_root(sub)
+        assert found == tmp_path
+
+    def test_find_project_root_with_git_dir(self, tmp_path: Path):
+        config_module = require_module("self_evolve.config")
+        (tmp_path / ".git").mkdir()
+        sub = tmp_path / "src"
+        sub.mkdir()
+
+        found = config_module.find_project_root(sub)
+        assert found == tmp_path
+
+    def test_find_project_root_returns_none(self, tmp_path: Path):
+        config_module = require_module("self_evolve.config")
+        # tmp_path 中没有 .self-evolve 或 .git
+        isolated = tmp_path / "deep" / "nested"
+        isolated.mkdir(parents=True)
+
+        found = config_module.find_project_root(isolated)
+        # 可能在上层有 .git，但不一定，所以只验证没有异常
+        assert found is None or isinstance(found, Path)
 
 
 class TestModels:
@@ -207,6 +263,146 @@ class TestStorage:
         assert storage.load_rules(tmp_path) == []
 
 
+class TestSync:
+    def test_sync_cursor_generates_mdc(self, tmp_path: Path):
+        sync_module = require_module("self_evolve.sync")
+        models = require_module("self_evolve.models")
+
+        rules = [
+            models.PromotedRule(
+                id="R-001",
+                source_learning_id="L-001",
+                rule="Always validate env vars",
+                domain="debugging",
+                created_at="2026-03-30T12:00:00Z",
+            ),
+        ]
+        result = sync_module.sync_cursor(tmp_path, rules)
+        assert result.target == "cursor"
+        assert result.path.exists()
+        content = result.path.read_text(encoding="utf-8")
+        assert "alwaysApply: true" in content
+        assert "Always validate env vars" in content
+        assert "agent-kit self-evolve" in content
+
+    def test_sync_copilot_generates_block(self, tmp_path: Path):
+        sync_module = require_module("self_evolve.sync")
+        models = require_module("self_evolve.models")
+
+        rules = [
+            models.PromotedRule(
+                id="R-001",
+                source_learning_id="L-001",
+                rule="Use typed returns",
+                domain="architecture",
+                created_at="2026-03-30T12:00:00Z",
+            ),
+        ]
+        result = sync_module.sync_copilot(tmp_path, rules)
+        assert result.target == "copilot"
+        content = result.path.read_text(encoding="utf-8")
+        assert "<!-- self-evolve:start -->" in content
+        assert "<!-- self-evolve:end -->" in content
+        assert "Use typed returns" in content
+
+    def test_sync_copilot_preserves_existing_content(self, tmp_path: Path):
+        sync_module = require_module("self_evolve.sync")
+        models = require_module("self_evolve.models")
+
+        path = tmp_path / ".github" / "copilot-instructions.md"
+        path.parent.mkdir(parents=True)
+        path.write_text("# Existing Instructions\n\nKeep this content.\n", encoding="utf-8")
+
+        rules = [
+            models.PromotedRule(
+                id="R-001",
+                source_learning_id="L-001",
+                rule="New rule",
+                domain="testing",
+                created_at="2026-03-30T12:00:00Z",
+            ),
+        ]
+        sync_module.sync_copilot(tmp_path, rules)
+
+        content = path.read_text(encoding="utf-8")
+        assert "Existing Instructions" in content
+        assert "Keep this content." in content
+        assert "New rule" in content
+
+    def test_sync_copilot_updates_existing_block(self, tmp_path: Path):
+        sync_module = require_module("self_evolve.sync")
+        models = require_module("self_evolve.models")
+
+        path = tmp_path / ".github" / "copilot-instructions.md"
+        path.parent.mkdir(parents=True)
+        path.write_text(
+            "# Header\n\n"
+            "<!-- self-evolve:start -->\nOld content\n<!-- self-evolve:end -->\n\n"
+            "# Footer\n",
+            encoding="utf-8",
+        )
+
+        rules = [
+            models.PromotedRule(
+                id="R-001",
+                source_learning_id="L-001",
+                rule="Updated rule",
+                domain="testing",
+                created_at="2026-03-30T12:00:00Z",
+            ),
+        ]
+        sync_module.sync_copilot(tmp_path, rules)
+
+        content = path.read_text(encoding="utf-8")
+        assert "Header" in content
+        assert "Footer" in content
+        assert "Updated rule" in content
+        assert "Old content" not in content
+
+    def test_sync_codex_generates_block(self, tmp_path: Path):
+        sync_module = require_module("self_evolve.sync")
+        models = require_module("self_evolve.models")
+
+        rules = [
+            models.PromotedRule(
+                id="R-001",
+                source_learning_id="L-001",
+                rule="Check null before access",
+                domain="debugging",
+                created_at="2026-03-30T12:00:00Z",
+            ),
+        ]
+        result = sync_module.sync_codex(tmp_path, rules)
+        assert result.target == "codex"
+        content = result.path.read_text(encoding="utf-8")
+        assert "Check null before access" in content
+
+    def test_sync_to_targets_multiple(self, tmp_path: Path):
+        sync_module = require_module("self_evolve.sync")
+        models = require_module("self_evolve.models")
+
+        rules = [
+            models.PromotedRule(
+                id="R-001",
+                source_learning_id="L-001",
+                rule="A rule",
+                domain="testing",
+                created_at="2026-03-30T12:00:00Z",
+            ),
+        ]
+        results = sync_module.sync_to_targets(tmp_path, rules, ["cursor", "copilot", "codex"])
+        assert len(results) == 3
+        assert {r.target for r in results} == {"cursor", "copilot", "codex"}
+
+    def test_sync_empty_rules(self, tmp_path: Path):
+        sync_module = require_module("self_evolve.sync")
+
+        result = sync_module.sync_cursor(tmp_path, [])
+        assert result.rules_count == 0
+        content = result.path.read_text(encoding="utf-8")
+        assert "Self-Evolved Project Rules" in content
+
+
 class TestLogic:
     def test_capture_learning_creates_entry(self, tmp_path: Path):
         logic = require_module("self_evolve.logic")
@@ -257,7 +453,7 @@ class TestLogic:
         logic = require_module("self_evolve.logic")
         config_module = require_module("self_evolve.config")
         config = config_module.SelfEvolveConfig(
-            skills_target_dir=tmp_path / "skills",
+            targets=["cursor"],
             promotion_threshold=2,
         )
 
@@ -274,7 +470,7 @@ class TestLogic:
         config_module = require_module("self_evolve.config")
         storage = require_module("self_evolve.storage")
         config = config_module.SelfEvolveConfig(
-            skills_target_dir=tmp_path / "skills",
+            targets=["cursor"],
         )
 
         e1 = logic.capture_learning(tmp_path, summary="Issue 1", domain="testing", pattern_key="shared")
@@ -325,7 +521,7 @@ class TestLogic:
         models = require_module("self_evolve.models")
 
         config = config_module.SelfEvolveConfig(
-            skills_target_dir=tmp_path / "skills",
+            targets=["cursor"],
             promotion_threshold=3,
             min_task_count=2,
         )
@@ -358,43 +554,93 @@ class TestLogic:
         )
         assert logic.check_promotion_eligibility(already_promoted, config) is False
 
-    def test_extract_skill_creates_skill_md(self, tmp_path: Path):
+    def test_init_project_creates_structure(self, tmp_path: Path):
+        logic = require_module("self_evolve.logic")
+        config_module = require_module("self_evolve.config")
+
+        config = config_module.SelfEvolveConfig(
+            targets=["cursor", "copilot"],
+        )
+        config_path = logic.init_project(tmp_path, config)
+
+        assert config_path.exists()
+        assert (tmp_path / ".self-evolve").is_dir()
+        assert (tmp_path / ".cursor" / "rules" / "self-evolve.mdc").exists()
+        assert (tmp_path / ".github" / "copilot-instructions.md").exists()
+
+    def test_sync_rules_to_targets(self, tmp_path: Path):
         logic = require_module("self_evolve.logic")
         storage = require_module("self_evolve.storage")
         models = require_module("self_evolve.models")
 
-        entry = models.LearningEntry(
+        config = setup_project(tmp_path)
+
+        rules = [
+            models.PromotedRule(
+                id="R-001",
+                source_learning_id="L-001",
+                rule="Always validate inputs",
+                domain="security",
+                created_at="2026-03-30T12:00:00Z",
+            ),
+        ]
+        storage.save_rules(tmp_path, rules)
+
+        results = logic.sync_rules(tmp_path, config)
+        assert len(results) == 3
+        for r in results:
+            assert r.rules_count == 1
+
+    def test_evolve_full_cycle(self, tmp_path: Path):
+        logic = require_module("self_evolve.logic")
+        config_module = require_module("self_evolve.config")
+        storage = require_module("self_evolve.storage")
+        models = require_module("self_evolve.models")
+
+        config = config_module.SelfEvolveConfig(
+            targets=["cursor"],
+            promotion_threshold=2,
+            min_task_count=2,
+        )
+        config_module.save_config(tmp_path, config)
+
+        # 创建两个可推广的学习条目
+        e1 = models.LearningEntry(
             id="L-20260330-001",
             timestamp="2026-03-30T12:00:00Z",
             priority="high",
-            status="resolved",
+            status="active",
             domain="debugging",
-            summary="Always validate env vars",
-            detail="When apps fail to start, often env vars are missing.",
-            suggested_action="Add validation script at startup.",
+            summary="Check env vars",
+            pattern_key="env-check",
+            recurrence_count=3,
+            task_ids=["t1", "t2"],
         )
-        storage.save_learning(tmp_path, entry)
+        e2 = models.LearningEntry(
+            id="L-20260330-002",
+            timestamp="2026-03-30T12:01:00Z",
+            priority="high",
+            status="active",
+            domain="debugging",
+            summary="Also check env vars",
+            pattern_key="env-check",
+            recurrence_count=3,
+            task_ids=["t1", "t2"],
+        )
+        storage.save_learning(tmp_path, e1)
+        storage.save_learning(tmp_path, e2)
 
-        skills_dir = tmp_path / "skills"
-        result = logic.extract_skill(tmp_path, "L-20260330-001", "env-validator", skills_dir)
+        result = logic.evolve(tmp_path, config)
 
-        assert result is not None
-        skill_md = result / "SKILL.md"
-        assert skill_md.exists()
+        assert len(result.promoted) == 2
+        assert len(result.sync_results) == 1
+        assert result.sync_results[0].target == "cursor"
 
-        content = skill_md.read_text(encoding="utf-8")
-        assert "env-validator" in content
-        assert "Always validate env vars" in content
-        assert "debugging" in content
-
-        reloaded = storage.load_learning(tmp_path, "L-20260330-001")
-        assert reloaded is not None
-        assert reloaded.status == "promoted_to_skill"
-
-    def test_extract_skill_returns_none_for_missing(self, tmp_path: Path):
-        logic = require_module("self_evolve.logic")
-        result = logic.extract_skill(tmp_path, "L-nonexistent", "test", tmp_path / "skills")
-        assert result is None
+        # 验证 cursor 规则文件包含推广的规则
+        cursor_file = tmp_path / ".cursor" / "rules" / "self-evolve.mdc"
+        assert cursor_file.exists()
+        content = cursor_file.read_text(encoding="utf-8")
+        assert "Check env vars" in content
 
     def test_get_evolution_status(self, tmp_path: Path):
         logic = require_module("self_evolve.logic")

@@ -12,7 +12,7 @@ members = [
 
 [[package]]
 name = "agent-kit"
-version = "0.2.12"
+version = "0.2.13"
 source = { editable = "." }
 dependencies = [
     { name = "packaging" },
@@ -200,7 +200,7 @@ wheels = [
 
 [[package]]
 name = "self-evolve"
-version = "0.1.1"
+version = "0.2.0"
 source = { editable = "packages/self-evolve" }
 dependencies = [
     { name = "questionary" },

@@ -11,18 +11,26 @@ import questionary
 import typer
 
 from self_evolve import API_VERSION, CONFIG_VERSION, PLUGIN_ID, __version__
-from self_evolve.config import SelfEvolveConfig, load_config, save_config
+from self_evolve.config import (
+    SUPPORTED_TARGETS,
+    SelfEvolveConfig,
+    find_project_root,
+    load_config,
+)
 from self_evolve.locale import resolve_language
 from self_evolve.logic import (
     AnalysisResult,
     EvolutionStatus,
+    EvolveResult,
     analyze_patterns,
     capture_learning,
     check_promotion_eligibility,
-    extract_skill,
+    evolve,
     filter_learnings,
     get_evolution_status,
+    init_project,
     promote_learning,
+    sync_rules,
 )
 from self_evolve.messages import translate
 from self_evolve.storage import load_learning
@@ -138,20 +146,42 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
             )
             raise typer.Exit()
 
-    @app.command("wizard", help=_t(language, "wizard.help"))
-    def wizard_command() -> None:
+    @app.command("init", help=_t(language, "init.help"))
+    def init_command() -> None:
         runtime = runtime_factory()
-        runtime.io.echo(_tr(runtime, "wizard.welcome"))
-        runtime.io.echo(_tr(runtime, "wizard.welcome_detail"))
-        runtime.io.echo("")
+        project_root = runtime.cwd
 
-        config = load_config(runtime.config_root)
-        if config is None:
-            _run_init(runtime)
-            runtime.io.echo(_tr(runtime, "wizard.completed"))
+        existing = find_project_root(project_root)
+        if existing is not None and load_config(existing) is not None:
+            runtime.io.warn(_tr(runtime, "warning.already_initialized", path=str(existing)))
             return
 
-        runtime.io.echo(_tr(runtime, "wizard.completed"))
+        runtime.io.echo(_tr(runtime, "init.welcome"))
+
+        targets = runtime.io.select_many(
+            _tr(runtime, "init.select_targets"),
+            list(SUPPORTED_TARGETS),
+        )
+        if not targets:
+            runtime.io.warn(_tr(runtime, "init.no_targets"))
+            return
+
+        threshold = runtime.io.prompt_text(
+            _tr(runtime, "prompt.promotion_threshold"),
+            default="3",
+        )
+        min_tasks = runtime.io.prompt_text(
+            _tr(runtime, "prompt.min_task_count"),
+            default="2",
+        )
+
+        config = SelfEvolveConfig(
+            targets=targets,
+            promotion_threshold=int(threshold),
+            min_task_count=int(min_tasks),
+        )
+        init_project(project_root, config)
+        runtime.io.echo(_tr(runtime, "init.completed", targets=", ".join(targets)))
 
     @app.command("capture", help=_t(language, "capture.help"))
     def capture_command(
@@ -164,12 +194,12 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
         task_id: str = typer.Option("", "--task-id", help=_t(language, "option.task_id")),
     ) -> None:
         runtime = runtime_factory()
-        config = _require_config(runtime)
-        if config is None:
+        project_root = _require_project(runtime)
+        if project_root is None:
             return
 
         entry = capture_learning(
-            runtime.data_root,
+            project_root,
             summary=summary,
             domain=domain,
             priority=priority,
@@ -188,12 +218,12 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
         limit: int = typer.Option(20, "--limit", help=_t(language, "option.limit")),
     ) -> None:
         runtime = runtime_factory()
-        config = _require_config(runtime)
-        if config is None:
+        project_root = _require_project(runtime)
+        if project_root is None:
             return
 
         entries = filter_learnings(
-            runtime.data_root,
+            project_root,
             status=status,
             domain=domain,
             priority=priority,
@@ -210,11 +240,16 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
     @app.command("analyze", help=_t(language, "analyze.help"))
     def analyze_command() -> None:
         runtime = runtime_factory()
-        config = _require_config(runtime)
-        if config is None:
+        project_root = _require_project(runtime)
+        if project_root is None:
             return
 
-        result = analyze_patterns(runtime.data_root, config)
+        config = load_config(project_root)
+        if config is None:
+            runtime.io.warn(_tr(runtime, "warning.not_initialized"))
+            return
+
+        result = analyze_patterns(project_root, config)
         _print_analysis(runtime, result)
 
     @app.command("promote", help=_t(language, "promote.help"))
@@ -223,11 +258,16 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
         rule: str | None = typer.Option(None, "--rule", help=_t(language, "option.rule")),
     ) -> None:
         runtime = runtime_factory()
-        config = _require_config(runtime)
-        if config is None:
+        project_root = _require_project(runtime)
+        if project_root is None:
             return
 
-        entry = load_learning(runtime.data_root, learning_id)
+        config = load_config(project_root)
+        if config is None:
+            runtime.io.warn(_tr(runtime, "warning.not_initialized"))
+            return
+
+        entry = load_learning(project_root, learning_id)
         if entry is None:
             runtime.io.warn(_tr(runtime, "warning.learning_not_found", id=learning_id))
             return
@@ -239,46 +279,75 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
         if rule is None:
             rule = runtime.io.prompt_text(_tr(runtime, "prompt.rule_text"))
 
-        promoted = promote_learning(runtime.data_root, learning_id, rule)
+        promoted = promote_learning(project_root, learning_id, rule)
         if promoted:
             runtime.io.echo(_tr(runtime, "saved.rule", id=promoted.id))
 
-    @app.command("extract-skill", help=_t(language, "extract_skill.help"))
-    def extract_skill_command(
-        learning_id: str = typer.Argument(help=_t(language, "option.learning_id")),
-        name: str | None = typer.Option(None, "--name", help=_t(language, "option.skill_name")),
-    ) -> None:
+    @app.command("sync", help=_t(language, "sync.help"))
+    def sync_command() -> None:
         runtime = runtime_factory()
-        config = _require_config(runtime)
+        project_root = _require_project(runtime)
+        if project_root is None:
+            return
+
+        config = load_config(project_root)
         if config is None:
+            runtime.io.warn(_tr(runtime, "warning.not_initialized"))
             return
 
-        entry = load_learning(runtime.data_root, learning_id)
-        if entry is None:
-            runtime.io.warn(_tr(runtime, "warning.learning_not_found", id=learning_id))
+        results = sync_rules(project_root, config)
+        if not results:
+            runtime.io.echo(_tr(runtime, "sync.no_rules"))
             return
 
-        if name is None:
-            name = runtime.io.prompt_text(_tr(runtime, "prompt.skill_name"))
+        total_rules = results[0].rules_count if results else 0
+        target_names = [r.target for r in results]
+        runtime.io.echo(_tr(runtime, "sync.completed", count=total_rules, targets=", ".join(target_names)))
+        for r in results:
+            runtime.io.echo(_tr(runtime, "sync.target", target=r.target, path=str(r.path), count=r.rules_count))
 
-        result = extract_skill(
-            runtime.data_root,
-            learning_id,
-            name,
-            config.skills_target_dir,
-        )
-        if result:
-            runtime.io.echo(_tr(runtime, "saved.skill", path=str(result)))
+    @app.command("evolve", help=_t(language, "evolve.help"))
+    def evolve_command() -> None:
+        runtime = runtime_factory()
+        project_root = _require_project(runtime)
+        if project_root is None:
+            return
+
+        config = load_config(project_root)
+        if config is None:
+            runtime.io.warn(_tr(runtime, "warning.not_initialized"))
+            return
+
+        runtime.io.echo(_tr(runtime, "evolve.start"))
+
+        result = evolve(project_root, config)
+
+        _print_analysis(runtime, result.analysis)
+
+        if result.promoted:
+            runtime.io.echo(_tr(runtime, "evolve.promoted", count=len(result.promoted)))
+            for rule in result.promoted:
+                runtime.io.echo(_tr(runtime, "saved.rule", id=rule.id))
+        else:
+            runtime.io.echo(_tr(runtime, "evolve.no_changes"))
+
+        if result.sync_results:
+            target_names = [r.target for r in result.sync_results]
+            total_rules = result.sync_results[0].rules_count if result.sync_results else 0
+            runtime.io.echo(_tr(runtime, "sync.completed", count=total_rules, targets=", ".join(target_names)))
+
+        runtime.io.echo(_tr(runtime, "evolve.completed"))
 
     @app.command("status", help=_t(language, "status.help"))
     def status_command() -> None:
         runtime = runtime_factory()
-        config = _require_config(runtime)
-        if config is None:
+        project_root = _require_project(runtime)
+        if project_root is None:
             return
 
-        evo_status = get_evolution_status(runtime.data_root)
-        _print_status(runtime, evo_status)
+        config = load_config(project_root)
+        evo_status = get_evolution_status(project_root)
+        _print_status(runtime, evo_status, config)
 
     return app
 
@@ -299,41 +368,20 @@ def _tr(runtime: PluginRuntime, key: str, **kwargs: object) -> str:
     return translate(_runtime_language(runtime), key, **kwargs)
 
 
-def _require_config(runtime: PluginRuntime) -> SelfEvolveConfig | None:
-    config = load_config(runtime.config_root)
+def _require_project(runtime: PluginRuntime) -> Path | None:
+    """查找项目根目录。如果未初始化，打印警告并返回 None。"""
+    project_root = find_project_root(runtime.cwd)
+    if project_root is None:
+        runtime.io.warn(_tr(runtime, "warning.not_initialized"))
+        return None
+
+    config = load_config(project_root)
     if config is None:
-        runtime.io.warn(_tr(runtime, "warning.not_configured"))
-        _run_init(runtime)
-        config = load_config(runtime.config_root)
-    return config
+        # 找到了项目根目录（有 .git）但未初始化 self-evolve
+        runtime.io.warn(_tr(runtime, "warning.not_initialized"))
+        return None
 
-
-def _run_init(runtime: PluginRuntime) -> None:
-    skills_dir = runtime.io.prompt_text(
-        _tr(runtime, "prompt.skills_target_dir"),
-        default="~/.agents/skills",
-    )
-    threshold = runtime.io.prompt_text(
-        _tr(runtime, "prompt.promotion_threshold"),
-        default="3",
-    )
-    window = runtime.io.prompt_text(
-        _tr(runtime, "prompt.promotion_window_days"),
-        default="30",
-    )
-    min_tasks = runtime.io.prompt_text(
-        _tr(runtime, "prompt.min_task_count"),
-        default="2",
-    )
-
-    config = SelfEvolveConfig(
-        skills_target_dir=Path(skills_dir).expanduser(),
-        promotion_threshold=int(threshold),
-        promotion_window_days=int(window),
-        min_task_count=int(min_tasks),
-    )
-    path = save_config(runtime.config_root, config)
-    runtime.io.echo(_tr(runtime, "saved.config", path=str(path)))
+    return project_root
 
 
 def _print_entry(runtime: PluginRuntime, entry) -> None:
@@ -374,11 +422,16 @@ def _print_analysis(runtime: PluginRuntime, result: AnalysisResult) -> None:
             runtime.io.echo(_tr(runtime, "analyze.candidate", id=entry.id, summary=entry.summary))
 
 
-def _print_status(runtime: PluginRuntime, status: EvolutionStatus) -> None:
+def _print_status(
+    runtime: PluginRuntime,
+    status: EvolutionStatus,
+    config: SelfEvolveConfig | None,
+) -> None:
     runtime.io.echo(_tr(runtime, "status.total", count=status.total_learnings))
     for s, count in sorted(status.status_counts.items()):
         runtime.io.echo(_tr(runtime, "status.by_status", status=s, count=count))
     runtime.io.echo(_tr(runtime, "status.rules", count=status.total_rules))
-    runtime.io.echo(_tr(runtime, "status.skills", count=status.total_skills))
+    if config:
+        runtime.io.echo(_tr(runtime, "status.targets", targets=", ".join(config.targets)))
     if status.active_domains:
         runtime.io.echo(_tr(runtime, "status.domains", domains=", ".join(status.active_domains)))

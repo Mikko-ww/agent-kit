@@ -4,18 +4,19 @@
 
 ## 1. 插件目标
 
-`self-evolve` 负责为 Agent 提供自我进化能力：通过结构化的学习捕获、模式识别、规则推广和技能提取，形成"经验 → 模式 → 规则 → 技能"的闭环演进系统。
+`self-evolve` 负责为 Agent 提供以项目为基础的自我进化能力：通过结构化的学习捕获、模式识别、规则推广和多 Agent 同步，以 Skill 方式接入 Cursor、VS Code Copilot、Codex 等主流编码 Agent，形成"经验 → 模式 → 规则 → Agent Skill"的闭环演进系统。
 
 ## 2. 命令
 
 当前插件对外提供以下命令：
 
-- `agent-kit self-evolve wizard`
+- `agent-kit self-evolve init`
 - `agent-kit self-evolve capture`
 - `agent-kit self-evolve list`
 - `agent-kit self-evolve analyze`
 - `agent-kit self-evolve promote`
-- `agent-kit self-evolve extract-skill`
+- `agent-kit self-evolve sync`
+- `agent-kit self-evolve evolve`
 - `agent-kit self-evolve status`
 
 对应实现入口：
@@ -26,18 +27,19 @@
 
 ## 3. 配置
 
-配置文件位置：
+配置文件位置（项目级）：
 
-- `~/.config/agent-kit/plugins/self-evolve/config.jsonc`
+- `<project-root>/.self-evolve/config.jsonc`
 
 当前配置核心字段：
 
 - `plugin_id`
 - `config_version`
-- `skills_target_dir`
+- `targets`：Agent 目标列表，支持 `cursor`、`copilot`、`codex`
 - `promotion_threshold`
 - `promotion_window_days`
 - `min_task_count`
+- `auto_promote`
 
 配置读写实现：
 
@@ -45,43 +47,58 @@
 
 ## 4. 数据存储
 
-学习条目存储位置：
+学习条目存储位置（项目级）：
 
-- `~/.local/share/agent-kit/plugins/self-evolve/learnings/`
+- `<project-root>/.self-evolve/learnings/`
 
-推广规则存储位置：
+推广规则存储位置（项目级）：
 
-- `~/.local/share/agent-kit/plugins/self-evolve/rules.jsonc`
+- `<project-root>/.self-evolve/rules.jsonc`
 
 存储实现：
 
 - [src/self_evolve/storage.py](src/self_evolve/storage.py)
 
-## 5. 核心概念
+## 5. Agent Skill 同步
 
-- **学习条目**（Learning Entry）：结构化的经验记录，包含摘要、领域、优先级、模式键等字段。
-- **模式识别**（Pattern Detection）：通过 `pattern_key` 精确匹配，自动关联相似条目并递增重复计数。
-- **推广**（Promotion）：当学习满足门槛条件（重复次数 ≥ 阈值、跨任务出现、时间窗口内），可提炼为永久规则。
-- **技能提取**（Skill Extraction）：将学习转化为符合 Agent Skills 规范的 `SKILL.md` 文件，安装到目标目录。
+同步模块自动将推广规则写入各 Agent 的 Skill/指令文件：
 
-## 6. 业务规则
+- **Cursor**: `.cursor/rules/self-evolve.mdc`（独占文件）
+- **Copilot**: `.github/copilot-instructions.md`（标记块管理）
+- **Codex**: `.codex/AGENTS.md`（标记块管理）
 
-- 学习条目按单文件存储，文件名为 `<learning-id>.jsonc`。
+同步实现：
+
+- [src/self_evolve/sync.py](src/self_evolve/sync.py)
+
+## 6. 核心概念
+
+- **项目级进化**：所有数据存储在项目 `.self-evolve/` 目录中，进化仅针对当前项目。
+- **学习条目**（Learning Entry）：结构化的经验记录。
+- **模式识别**（Pattern Detection）：通过 `pattern_key` 精确匹配，关联相似条目。
+- **推广**（Promotion）：满足门槛条件后提炼为永久规则。
+- **同步**（Sync）：将推广规则自动写入各 Agent 的 Skill 文件。
+- **一键进化**（Evolve）：自动完成 analyze → promote → sync 完整循环。
+
+## 7. 业务规则
+
+- 学习条目按单文件存储在 `.self-evolve/learnings/` 中。
 - 学习 ID 格式为 `L-YYYYMMDD-NNN`，自动递增。
 - 推广规则 ID 格式为 `R-NNN`，自动递增。
-- 模式识别采用 `pattern_key` 精确匹配，不做模糊语义匹配。
-- 推广条件三项须同时满足：`recurrence_count >= threshold`、`len(task_ids) >= min_task_count`、时间窗口内。
-- 技能提取生成标准 `SKILL.md`（YAML frontmatter + Markdown 正文）。
-- 提取后学习条目状态更新为 `promoted_to_skill`。
+- 模式识别采用 `pattern_key` 精确匹配。
+- 推广条件须同时满足：`recurrence_count >= threshold`、`len(task_ids) >= min_task_count`。
+- 同步到 Copilot/Codex 时使用标记块（`<!-- self-evolve:start/end -->`），不覆盖已有内容。
+- 同步到 Cursor 时生成独占 `.mdc` 文件。
 
-## 7. 修改本插件时重点验证
+## 8. 修改本插件时重点验证
 
-- `wizard` 是否正确初始化配置
-- `capture` 是否正确生成唯一 ID 并存储条目
+- `init` 是否正确创建 `.self-evolve/` 目录和配置
+- `capture` 是否正确在项目本地生成唯一 ID 并存储条目
 - `list` 是否正确按状态/领域/优先级过滤
 - `analyze` 是否正确识别模式、关联条目、递增计数
 - `promote` 是否正确检查推广条件并生成规则
-- `extract-skill` 是否正确生成 SKILL.md
+- `sync` 是否正确为各 Agent 目标生成 Skill 文件
+- `evolve` 是否正确执行完整进化循环
 - `status` 是否正确统计各维度数据
 - 中英文下的 `--help`、warning/error、状态输出是否保持一致
 
