@@ -16,22 +16,25 @@ agent-kit = "agent_kit.cli:main"
 [dependency-groups]
 dev = [
     "opencode-env-switch",
+    "self-evolve",
     "skills-link",
     "pytest>=8.3,<9.0",
 ]
 
 [tool.uv.sources]
 opencode-env-switch = { workspace = true }
+self-evolve = { workspace = true }
 skills-link = { workspace = true }
 
 [tool.uv.workspace]
-members = ["packages/skills-link", "packages/opencode-env-switch"]
+members = ["packages/skills-link", "packages/opencode-env-switch", "packages/self-evolve"]
 
 [tool.pytest.ini_options]
 testpaths = [
     "tests",
     "packages/skills-link/tests",
     "packages/opencode-env-switch/tests",
+    "packages/self-evolve/tests",
 ]
 
 [build-system]
