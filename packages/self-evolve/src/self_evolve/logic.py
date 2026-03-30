@@ -202,7 +202,7 @@ def _next_memory_id(memories_dir: Path) -> str:
     if not memories_dir.exists():
         return "m-001"
     existing = [
-        p.stem for p in memories_dir.iterdir() if p.name.endswith(".jsonc") and p.stem.startswith("m-")
+        p.stem for p in memories_dir.glob("m-*.jsonc")
     ]
     if not existing:
         return "m-001"
