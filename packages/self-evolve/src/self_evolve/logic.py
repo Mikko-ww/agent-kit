@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from self_evolve.config import SelfEvolveConfig
+from self_evolve.config import SelfEvolveConfig, evolve_dir, save_config
 from self_evolve.models import (
     LearningEntry,
     PromotedRule,
@@ -20,6 +20,7 @@ from self_evolve.storage import (
     save_learning,
     save_rules,
 )
+from self_evolve.sync import SyncResult, sync_to_targets
 
 
 @dataclass(slots=True, frozen=True)
@@ -44,8 +45,37 @@ class EvolutionStatus:
     active_domains: list[str]
 
 
+@dataclass(slots=True, frozen=True)
+class EvolveResult:
+    analysis: AnalysisResult
+    promoted: list[PromotedRule]
+    sync_results: list[SyncResult]
+
+
+# ── 项目初始化 ─────────────────────────────────────────────────────
+
+
+def init_project(
+    project_root: Path,
+    config: SelfEvolveConfig,
+) -> Path:
+    """在项目根目录创建 .self-evolve/ 并写入配置。"""
+    edir = evolve_dir(project_root)
+    edir.mkdir(parents=True, exist_ok=True)
+
+    config_path = save_config(project_root, config)
+
+    # 初次同步，生成空的 agent skill 文件
+    sync_to_targets(project_root, [], config.targets)
+
+    return config_path
+
+
+# ── 捕获学习 ──────────────────────────────────────────────────────
+
+
 def capture_learning(
-    data_root: Path,
+    project_root: Path,
     *,
     summary: str,
     domain: str,
@@ -55,7 +85,7 @@ def capture_learning(
     pattern_key: str = "",
     task_id: str = "",
 ) -> LearningEntry:
-    existing_ids = list_learning_ids(data_root)
+    existing_ids = list_learning_ids(project_root)
     learning_id = generate_learning_id(existing_ids)
     now = datetime.now(timezone.utc).isoformat()
 
@@ -76,19 +106,22 @@ def capture_learning(
         task_ids=task_ids,
     )
 
-    save_learning(data_root, entry)
+    save_learning(project_root, entry)
     return entry
 
 
+# ── 过滤列表 ──────────────────────────────────────────────────────
+
+
 def filter_learnings(
-    data_root: Path,
+    project_root: Path,
     *,
     status: str | None = None,
     domain: str | None = None,
     priority: str | None = None,
     limit: int = 20,
 ) -> list[LearningEntry]:
-    entries = list_learnings(data_root)
+    entries = list_learnings(project_root)
 
     if status:
         entries = [e for e in entries if e.status == status]
@@ -101,8 +134,11 @@ def filter_learnings(
     return entries[:limit]
 
 
-def analyze_patterns(data_root: Path, config: SelfEvolveConfig) -> AnalysisResult:
-    entries = list_learnings(data_root)
+# ── 模式分析 ──────────────────────────────────────────────────────
+
+
+def analyze_patterns(project_root: Path, config: SelfEvolveConfig) -> AnalysisResult:
+    entries = list_learnings(project_root)
 
     groups_by_key: dict[str, list[LearningEntry]] = {}
     for entry in entries:
@@ -115,12 +151,12 @@ def analyze_patterns(data_root: Path, config: SelfEvolveConfig) -> AnalysisResul
             continue
         recurrence = len(group_entries)
 
-        _cross_link(group_entries, data_root)
+        _cross_link(group_entries, project_root)
 
         for entry in group_entries:
             if entry.recurrence_count < recurrence:
                 entry.recurrence_count = recurrence
-                save_learning(data_root, entry)
+                save_learning(project_root, entry)
 
         pattern_groups.append(
             PatternGroup(pattern_key=key, entries=group_entries, recurrence=recurrence)
@@ -138,20 +174,23 @@ def analyze_patterns(data_root: Path, config: SelfEvolveConfig) -> AnalysisResul
     )
 
 
+# ── 推广 ──────────────────────────────────────────────────────────
+
+
 def check_promotion_eligibility(entry: LearningEntry, config: SelfEvolveConfig) -> bool:
     return _is_promotion_eligible(entry, config)
 
 
 def promote_learning(
-    data_root: Path,
+    project_root: Path,
     learning_id: str,
     rule_text: str,
 ) -> PromotedRule | None:
-    entry = load_learning(data_root, learning_id)
+    entry = load_learning(project_root, learning_id)
     if entry is None:
         return None
 
-    rules = load_rules(data_root)
+    rules = load_rules(project_root)
     existing_rule_ids = [r.id for r in rules]
     rule_id = generate_rule_id(existing_rule_ids)
     now = datetime.now(timezone.utc).isoformat()
@@ -165,40 +204,58 @@ def promote_learning(
     )
 
     rules.append(rule)
-    save_rules(data_root, rules)
+    save_rules(project_root, rules)
 
     entry.status = "promoted"
-    save_learning(data_root, entry)
+    save_learning(project_root, entry)
 
     return rule
 
 
-def extract_skill(
-    data_root: Path,
-    learning_id: str,
-    skill_name: str,
-    skills_target_dir: Path,
-) -> Path | None:
-    entry = load_learning(data_root, learning_id)
-    if entry is None:
-        return None
-
-    skill_dir = skills_target_dir / skill_name
-    skill_dir.mkdir(parents=True, exist_ok=True)
-
-    skill_md = skill_dir / "SKILL.md"
-    content = _build_skill_content(entry, skill_name)
-    skill_md.write_text(content, encoding="utf-8")
-
-    entry.status = "promoted_to_skill"
-    save_learning(data_root, entry)
-
-    return skill_dir
+# ── 同步 ──────────────────────────────────────────────────────────
 
 
-def get_evolution_status(data_root: Path) -> EvolutionStatus:
-    entries = list_learnings(data_root)
-    rules = load_rules(data_root)
+def sync_rules(
+    project_root: Path,
+    config: SelfEvolveConfig,
+) -> list[SyncResult]:
+    """将所有推广规则同步到配置的 agent targets。"""
+    rules = load_rules(project_root)
+    return sync_to_targets(project_root, rules, config.targets)
+
+
+# ── 一键进化 ──────────────────────────────────────────────────────
+
+
+def evolve(
+    project_root: Path,
+    config: SelfEvolveConfig,
+) -> EvolveResult:
+    """一键完成 analyze → auto-promote → sync 进化循环。"""
+    analysis = analyze_patterns(project_root, config)
+
+    promoted: list[PromotedRule] = []
+    for entry in analysis.promotion_candidates:
+        rule_text = entry.summary
+        rule = promote_learning(project_root, entry.id, rule_text)
+        if rule:
+            promoted.append(rule)
+
+    sync_results = sync_rules(project_root, config)
+
+    return EvolveResult(
+        analysis=analysis,
+        promoted=promoted,
+        sync_results=sync_results,
+    )
+
+
+# ── 状态概览 ──────────────────────────────────────────────────────
+
+
+def get_evolution_status(project_root: Path) -> EvolutionStatus:
+    entries = list_learnings(project_root)
+    rules = load_rules(project_root)
 
     status_counts: dict[str, int] = dict(Counter(e.status for e in entries))
     domains = sorted({e.domain for e in entries if e.status == "active"})
@@ -210,6 +267,9 @@ def get_evolution_status(data_root: Path) -> EvolutionStatus:
         total_skills=status_counts.get("promoted_to_skill", 0),
         active_domains=domains,
     )
+
+
+# ── 内部辅助 ──────────────────────────────────────────────────────
 
 
 def _is_promotion_eligible(entry: LearningEntry, config: SelfEvolveConfig) -> bool:
@@ -225,7 +285,7 @@ def _is_promotion_eligible(entry: LearningEntry, config: SelfEvolveConfig) -> bo
     return True
 
 
-def _cross_link(entries: list[LearningEntry], data_root: Path) -> None:
+def _cross_link(entries: list[LearningEntry], project_root: Path) -> None:
     entry_ids = {e.id for e in entries}
     changed = False
     for entry in entries:
@@ -236,47 +296,4 @@ def _cross_link(entries: list[LearningEntry], data_root: Path) -> None:
 
     if changed:
         for entry in entries:
-            save_learning(data_root, entry)
-
-
-def _build_skill_content(entry: LearningEntry, skill_name: str) -> str:
-    lines = [
-        "---",
-        f"name: {skill_name}",
-        f"description: {entry.summary}",
-        "---",
-        "",
-        f"# {skill_name}",
-        "",
-        f"## Summary",
-        "",
-        entry.summary,
-        "",
-    ]
-
-    if entry.detail:
-        lines.extend([
-            "## Detail",
-            "",
-            entry.detail,
-            "",
-        ])
-
-    if entry.suggested_action:
-        lines.extend([
-            "## Suggested Action",
-            "",
-            entry.suggested_action,
-            "",
-        ])
-
-    lines.extend([
-        "## Metadata",
-        "",
-        f"- Domain: {entry.domain}",
-        f"- Source: {entry.id}",
-        f"- Extracted: {datetime.now(timezone.utc).strftime('%Y-%m-%d')}",
-        "",
-    ])
-
-    return "\n".join(lines)
+            save_learning(project_root, entry)
