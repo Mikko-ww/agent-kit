@@ -1,27 +1,21 @@
+"""v5 配置管理。"""
+
 from __future__ import annotations
 
-from dataclasses import dataclass
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 from self_evolve import CONFIG_VERSION, PLUGIN_ID
-from self_evolve.jsonc import load_jsonc, write_jsonc
-from self_evolve.locale import normalize_language
+from self_evolve.jsonc import loads_jsonc
 
 _EVOLVE_DIR = ".agents/self-evolve"
 _SKILL_DIR = ".agents/skills/self-evolve"
-_LEGACY_MARKERS = ("learnings", "rules.jsonc")
-
-
-class LegacyLayoutError(RuntimeError):
-    """Raised when a deprecated self-evolve layout is detected."""
 
 
 @dataclass(slots=True, frozen=True)
 class SelfEvolveConfig:
     language: str | None = None
-    auto_accept_enabled: bool = False
-    auto_accept_min_confidence: float = 0.9
     inline_threshold: int = 20
 
 
@@ -33,39 +27,18 @@ def config_file_path(project_root: Path) -> Path:
     return evolve_dir(project_root) / "config.jsonc"
 
 
-def sessions_dir(project_root: Path) -> Path:
-    return evolve_dir(project_root) / "sessions"
-
-
-def candidates_dir(project_root: Path) -> Path:
-    return evolve_dir(project_root) / "candidates"
-
-
 def rules_dir(project_root: Path) -> Path:
     return evolve_dir(project_root) / "rules"
-
-
-def indexes_dir(project_root: Path) -> Path:
-    return evolve_dir(project_root) / "indexes"
 
 
 def skill_dir(project_root: Path) -> Path:
     return project_root / _SKILL_DIR
 
 
-def ensure_no_legacy_layout(project_root: Path) -> None:
-    base = evolve_dir(project_root)
-    for marker in _LEGACY_MARKERS:
-        if (base / marker).exists():
-            raise LegacyLayoutError("Legacy self-evolve layout detected.")
-
-
 def find_project_root(start: Path) -> Path | None:
     current = start.resolve()
     while True:
-        if (current / _EVOLVE_DIR).is_dir():
-            return current
-        if (current / ".git").exists():
+        if (current / _EVOLVE_DIR).is_dir() or (current / ".git").exists():
             return current
         parent = current.parent
         if parent == current:
@@ -73,54 +46,44 @@ def find_project_root(start: Path) -> Path | None:
         current = parent
 
 
-def load_config(project_root: Path) -> SelfEvolveConfig | None:
-    ensure_no_legacy_layout(project_root)
+def save_config(project_root: Path, config: SelfEvolveConfig) -> Path:
+    path = config_file_path(project_root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    import json
 
+    payload = {
+        "plugin_id": PLUGIN_ID,
+        "config_version": CONFIG_VERSION,
+        "language": config.language,
+        "inline_threshold": config.inline_threshold,
+    }
+    path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def load_config(project_root: Path) -> SelfEvolveConfig | None:
     path = config_file_path(project_root)
     if not path.exists():
         return None
-
-    data = load_jsonc(path)
-    if not isinstance(data, dict):
+    raw = loads_jsonc(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
         return None
-    if data.get("config_version") != CONFIG_VERSION:
-        raise LegacyLayoutError("Legacy self-evolve config detected.")
-
+    if raw.get("config_version") != CONFIG_VERSION:
+        return None
     return SelfEvolveConfig(
-        language=normalize_language(_optional_str(data.get("language"))),
-        auto_accept_enabled=bool(data.get("auto_accept_enabled", False)),
-        auto_accept_min_confidence=float(data.get("auto_accept_min_confidence", 0.9)),
-        inline_threshold=int(data.get("inline_threshold", 20)),
+        language=raw.get("language"),
+        inline_threshold=int(raw.get("inline_threshold", 20)),
     )
 
 
-def save_config(project_root: Path, config: SelfEvolveConfig) -> Path:
-    ensure_no_legacy_layout(project_root)
-    payload: dict[str, object] = {
-        "plugin_id": PLUGIN_ID,
-        "config_version": CONFIG_VERSION,
-        "auto_accept_enabled": config.auto_accept_enabled,
-        "auto_accept_min_confidence": config.auto_accept_min_confidence,
-        "inline_threshold": config.inline_threshold,
-    }
-    if config.language is not None:
-        payload["language"] = config.language
-    return write_jsonc(config_file_path(project_root), payload)
-
-
 def resolve_template_language(project_root: Path) -> str:
-    config = load_config(project_root)
-    if config is not None and config.language is not None:
-        return config.language
-
-    env_value = normalize_language(os.environ.get("AGENT_KIT_LANG"))
-    if env_value is not None:
-        return env_value
-
+    cfg = load_config(project_root)
+    if cfg and cfg.language:
+        return cfg.language
+    env_lang = os.environ.get("AGENT_KIT_LANG", "")
+    if env_lang:
+        return env_lang
     return "en"
-
-
-def _optional_str(value: object | None) -> str | None:
-    if value is None:
-        return None
-    return str(value)

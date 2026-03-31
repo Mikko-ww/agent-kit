@@ -1,98 +1,44 @@
-from __future__ import annotations
-
 from pathlib import Path
 
-from self_evolve.models import KnowledgeCandidate, KnowledgeIndex, KnowledgeRule, SessionRecord
-from self_evolve.storage import (
-    load_candidate,
-    load_index,
-    load_rule,
-    load_session,
-    save_candidate,
-    save_index,
-    save_rule,
-    save_session,
-    list_candidates,
-    list_rules,
-    list_sessions,
-)
+from self_evolve.models import KnowledgeRule
+from self_evolve.storage import list_rules, load_rule, save_rule
 
 
-def test_save_and_load_session(tmp_path: Path):
-    session = SessionRecord(
-        id="S-20260331-001",
-        created_at="2026-03-31T00:00:00+00:00",
-        source="agent",
-        summary="Session summary",
-        domain="debugging",
-        outcome="success",
-        observations=["obs"],
-        decisions=[],
-        fixes=[],
-        lessons=["lesson"],
-        files=[],
-        tags=[],
-        processed=False,
+def _make_rule(rule_id: str = "R-001", status: str = "active") -> KnowledgeRule:
+    return KnowledgeRule(
+        id=rule_id,
+        created_at="2026-03-31T12:00:00Z",
+        status=status,
+        title="Test",
+        statement="S",
+        rationale="R",
+        domain="testing",
+        tags=["ci"],
     )
-
-    save_session(tmp_path, session)
-
-    assert load_session(tmp_path, session.id) == session
-    assert list_sessions(tmp_path) == [session]
-
-
-def test_save_and_load_candidate(tmp_path: Path):
-    candidate = KnowledgeCandidate(
-        id="C-001",
-        created_at="2026-03-31T00:00:00+00:00",
-        status="open",
-        title="Title",
-        statement="Statement",
-        rationale="Rationale",
-        domain="debugging",
-        tags=["env"],
-        confidence=0.8,
-        fingerprint="fp",
-        source_session_ids=["S-001"],
-        derived_from="lesson",
-    )
-
-    save_candidate(tmp_path, candidate)
-
-    assert load_candidate(tmp_path, candidate.id) == candidate
-    assert list_candidates(tmp_path) == [candidate]
 
 
 def test_save_and_load_rule(tmp_path: Path):
-    rule = KnowledgeRule(
-        id="R-001",
-        created_at="2026-03-31T00:00:00+00:00",
-        status="active",
-        title="Title",
-        statement="Statement",
-        rationale="Rationale",
-        domain="debugging",
-        tags=["env"],
-        source_session_ids=["S-001"],
-        source_candidate_ids=["C-001"],
-        revision_of="",
-    )
-
-    save_rule(tmp_path, rule)
-
-    assert load_rule(tmp_path, rule.id) == rule
-    assert list_rules(tmp_path) == [rule]
+    rule = _make_rule()
+    path = save_rule(tmp_path, rule)
+    assert path.exists()
+    loaded = load_rule(tmp_path, "R-001")
+    assert loaded is not None
+    assert loaded.id == "R-001"
+    assert loaded.title == "Test"
 
 
-def test_save_and_load_index(tmp_path: Path):
-    index = KnowledgeIndex(
-        fingerprint_to_candidate_ids={"fp": ["C-001"]},
-        fingerprint_to_rule_ids={"fp": ["R-001"]},
-        session_to_candidate_ids={"S-001": ["C-001"]},
-        candidate_to_rule_id={"C-001": "R-001"},
-        active_rule_by_fingerprint={"fp": "R-001"},
-    )
+def test_load_rule_returns_none_when_missing(tmp_path: Path):
+    assert load_rule(tmp_path, "R-999") is None
 
-    save_index(tmp_path, "knowledge", index)
 
-    assert load_index(tmp_path, "knowledge") == index
+def test_list_rules(tmp_path: Path):
+    save_rule(tmp_path, _make_rule("R-001"))
+    save_rule(tmp_path, _make_rule("R-002"))
+    rules = list_rules(tmp_path)
+    assert len(rules) == 2
+    assert rules[0].id == "R-001"
+    assert rules[1].id == "R-002"
+
+
+def test_list_rules_empty(tmp_path: Path):
+    assert list_rules(tmp_path) == []
