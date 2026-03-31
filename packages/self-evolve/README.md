@@ -4,14 +4,14 @@ Project-based self-evolution toolkit for [agent-kit](https://github.com/Mikko-ww
 
 ## Overview
 
-`self-evolve` enables project-level self-evolution by integrating as an **Agent Skill** into mainstream coding agents — Cursor, VS Code Copilot, and Codex. It captures development experience within a project and evolves it into reusable rules that are automatically synced to each agent's instruction/skill format.
+`self-evolve` enables project-level self-evolution by integrating as an **Agent Skill** into mainstream coding agents — Cursor, VS Code Copilot, Codex and more. It captures development experience within a project and evolves it into reusable rules that are automatically synced to a unified skill file under `.agents/skills/self-evolve/SKILL.md`, discoverable by any agent.
 
 **Capture → Analyze → Promote → Sync**
 
 - **Capture**: Record structured learning entries from task experience (project-scoped)
 - **Analyze**: Detect patterns, link related entries, identify promotion candidates
 - **Promote**: Elevate validated learnings to permanent rules
-- **Sync**: Write rules to agent-specific skill files (`.cursor/rules/`, `.github/copilot-instructions.md`, `.codex/AGENTS.md`)
+- **Sync**: Write rules to a unified skill file (`.agents/skills/self-evolve/SKILL.md`)
 
 ## Installation
 
@@ -28,7 +28,7 @@ cd your-project
 agent-kit self-evolve init
 ```
 
-This creates `.self-evolve/` directory and generates initial skill files for selected agent targets.
+This creates `.agents/self-evolve/` directory and generates the initial skill file at `.agents/skills/self-evolve/SKILL.md`.
 
 ### 2. Capture a learning
 
@@ -54,7 +54,7 @@ agent-kit self-evolve promote L-20260330-001 \
   --rule "Validate all required environment variables at application startup"
 ```
 
-### 5. Sync rules to agents
+### 5. Sync rules to skill file
 
 ```bash
 agent-kit self-evolve sync
@@ -66,7 +66,7 @@ agent-kit self-evolve sync
 agent-kit self-evolve evolve
 ```
 
-This runs the full cycle: analyze → auto-promote eligible → sync to all agent targets.
+This runs the full cycle: analyze → auto-promote eligible → sync.
 
 ### 7. Check status
 
@@ -83,27 +83,28 @@ agent-kit self-evolve status
 | `list` | List learning entries with filtering |
 | `analyze` | Analyze patterns and detect duplicates |
 | `promote` | Promote a learning to a permanent rule |
-| `sync` | Sync promoted rules to agent skill files |
+| `sync` | Sync promoted rules to the unified skill file |
 | `evolve` | One-step: analyze + auto-promote + sync |
 | `status` | Show evolution status overview |
 
-## Agent Targets
+## Skill Discovery
 
-| Target | Output File | Mode |
-|--------|------------|------|
-| `cursor` | `.cursor/rules/self-evolve.mdc` | Exclusive (managed file) |
-| `copilot` | `.github/copilot-instructions.md` | Block (preserves existing content) |
-| `codex` | `.codex/AGENTS.md` | Block (preserves existing content) |
+All promoted rules are output to a single unified skill file:
+
+| Output File | Description |
+|------------|-------------|
+| `.agents/skills/self-evolve/SKILL.md` | Unified skill file discoverable by any agent |
+
+Any agent that supports `.agents/skills/` skill discovery (Cursor, Copilot, Codex, etc.) can automatically find and use this skill file. No per-agent configuration is needed.
 
 ## Configuration
 
-Config file: `<project-root>/.self-evolve/config.jsonc`
+Config file: `<project-root>/.agents/self-evolve/config.jsonc`
 
 ```jsonc
 {
   "plugin_id": "self-evolve",
-  "config_version": 2,
-  "targets": ["cursor", "copilot", "codex"],
+  "config_version": 3,
   "promotion_threshold": 3,
   "promotion_window_days": 30,
   "min_task_count": 2,
@@ -113,7 +114,6 @@ Config file: `<project-root>/.self-evolve/config.jsonc`
 
 | Field | Description | Default |
 |-------|-------------|---------|
-| `targets` | Agent targets to sync rules to | `["cursor", "copilot", "codex"]` |
 | `promotion_threshold` | Recurrence count needed for promotion | `3` |
 | `promotion_window_days` | Time window for promotion eligibility | `30` |
 | `min_task_count` | Minimum distinct tasks for promotion | `2` |
@@ -123,19 +123,16 @@ Config file: `<project-root>/.self-evolve/config.jsonc`
 
 ```
 <project-root>/
-├── .self-evolve/
-│   ├── config.jsonc          # Project config
-│   ├── learnings/            # Learning entries
-│   │   ├── L-20260330-001.jsonc
-│   │   └── ...
-│   └── rules.jsonc           # Promoted rules
-├── .cursor/
-│   └── rules/
-│       └── self-evolve.mdc   # Auto-generated Cursor rules
-├── .github/
-│   └── copilot-instructions.md  # Contains self-evolve block
-└── .codex/
-    └── AGENTS.md             # Contains self-evolve block
+├── .agents/
+│   ├── self-evolve/
+│   │   ├── config.jsonc          # Project config
+│   │   ├── learnings/            # Learning entries
+│   │   │   ├── L-20260330-001.jsonc
+│   │   │   └── ...
+│   │   └── rules.jsonc           # Promoted rules
+│   └── skills/
+│       └── self-evolve/
+│           └── SKILL.md          # Unified skill file (auto-generated)
 ```
 
 ## Language Support

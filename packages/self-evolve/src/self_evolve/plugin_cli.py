@@ -12,7 +12,6 @@ import typer
 
 from self_evolve import API_VERSION, CONFIG_VERSION, PLUGIN_ID, __version__
 from self_evolve.config import (
-    SUPPORTED_TARGETS,
     SelfEvolveConfig,
     find_project_root,
     load_config,
@@ -158,14 +157,6 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
 
         runtime.io.echo(_tr(runtime, "init.welcome"))
 
-        targets = runtime.io.select_many(
-            _tr(runtime, "init.select_targets"),
-            list(SUPPORTED_TARGETS),
-        )
-        if not targets:
-            runtime.io.warn(_tr(runtime, "init.no_targets"))
-            return
-
         threshold = runtime.io.prompt_text(
             _tr(runtime, "prompt.promotion_threshold"),
             default="3",
@@ -176,12 +167,11 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
         )
 
         config = SelfEvolveConfig(
-            targets=targets,
             promotion_threshold=int(threshold),
             min_task_count=int(min_tasks),
         )
         init_project(project_root, config)
-        runtime.io.echo(_tr(runtime, "init.completed", targets=", ".join(targets)))
+        runtime.io.echo(_tr(runtime, "init.completed"))
 
     @app.command("capture", help=_t(language, "capture.help"))
     def capture_command(
@@ -295,16 +285,12 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
             runtime.io.warn(_tr(runtime, "warning.not_initialized"))
             return
 
-        results = sync_rules(project_root, config)
-        if not results:
+        result = sync_rules(project_root, config)
+        if result.rules_count == 0:
             runtime.io.echo(_tr(runtime, "sync.no_rules"))
             return
 
-        total_rules = results[0].rules_count if results else 0
-        target_names = [r.target for r in results]
-        runtime.io.echo(_tr(runtime, "sync.completed", count=total_rules, targets=", ".join(target_names)))
-        for r in results:
-            runtime.io.echo(_tr(runtime, "sync.target", target=r.target, path=str(r.path), count=r.rules_count))
+        runtime.io.echo(_tr(runtime, "sync.completed", count=result.rules_count, path=str(result.path)))
 
     @app.command("evolve", help=_t(language, "evolve.help"))
     def evolve_command() -> None:
@@ -331,10 +317,10 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
         else:
             runtime.io.echo(_tr(runtime, "evolve.no_changes"))
 
-        if result.sync_results:
-            target_names = [r.target for r in result.sync_results]
-            total_rules = result.sync_results[0].rules_count if result.sync_results else 0
-            runtime.io.echo(_tr(runtime, "sync.completed", count=total_rules, targets=", ".join(target_names)))
+        if result.sync_result:
+            runtime.io.echo(
+                _tr(runtime, "sync.completed", count=result.sync_result.rules_count, path=str(result.sync_result.path))
+            )
 
         runtime.io.echo(_tr(runtime, "evolve.completed"))
 
@@ -431,7 +417,5 @@ def _print_status(
     for s, count in sorted(status.status_counts.items()):
         runtime.io.echo(_tr(runtime, "status.by_status", status=s, count=count))
     runtime.io.echo(_tr(runtime, "status.rules", count=status.total_rules))
-    if config:
-        runtime.io.echo(_tr(runtime, "status.targets", targets=", ".join(config.targets)))
     if status.active_domains:
         runtime.io.echo(_tr(runtime, "status.domains", domains=", ".join(status.active_domains)))

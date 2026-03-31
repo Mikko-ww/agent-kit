@@ -5,16 +5,16 @@ from pathlib import Path
 from self_evolve.jsonc import load_jsonc, write_jsonc
 from self_evolve.models import LearningEntry, PromotedRule
 
-# 项目内自我进化数据目录名
-_EVOLVE_DIR = ".self-evolve"
+# 项目内自我进化数据目录（位于 .agents/ 下）
+_EVOLVE_DIR_PARTS = (".agents", "self-evolve")
 
 
 def learnings_dir(project_root: Path) -> Path:
-    return project_root / _EVOLVE_DIR / "learnings"
+    return project_root / _EVOLVE_DIR_PARTS[0] / _EVOLVE_DIR_PARTS[1] / "learnings"
 
 
 def rules_file(project_root: Path) -> Path:
-    return project_root / _EVOLVE_DIR / "rules.jsonc"
+    return project_root / _EVOLVE_DIR_PARTS[0] / _EVOLVE_DIR_PARTS[1] / "rules.jsonc"
 
 
 def save_learning(project_root: Path, entry: LearningEntry) -> Path:

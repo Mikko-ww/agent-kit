@@ -78,14 +78,13 @@ def setup_project(tmp_path: Path):
     """创建已初始化的项目结构。"""
     config_module = require_module("self_evolve.config")
     config = config_module.SelfEvolveConfig(
-        targets=["cursor", "copilot", "codex"],
         promotion_threshold=3,
         promotion_window_days=30,
         min_task_count=2,
     )
     config_module.save_config(tmp_path, config)
-    # 创建 .self-evolve 目录
-    (tmp_path / ".self-evolve").mkdir(exist_ok=True)
+    # 创建 .agents/self-evolve 目录
+    (tmp_path / ".agents" / "self-evolve").mkdir(parents=True, exist_ok=True)
     return config
 
 
@@ -100,25 +99,23 @@ class TestPluginMetadata:
         data = json.loads(result.output)
         assert data["plugin_id"] == "self-evolve"
         assert data["api_version"] == 1
-        assert data["config_version"] == 2
+        assert data["config_version"] == 3
         assert "installed_version" in data
 
 
 class TestInit:
     def test_init_creates_project(self, tmp_path: Path):
         io = FakeIO(
-            multi_answers=[["cursor", "copilot"]],
             text_answers=["3", "2"],
         )
         app = build_app(tmp_path, io)
         result = runner.invoke(app, ["init"])
         assert result.exit_code == 0
-        assert "cursor" in result.output.lower() or "copilot" in result.output.lower()
+        assert "skill" in result.output.lower() or "SKILL.md" in result.output
 
         config_module = require_module("self_evolve.config")
         loaded = config_module.load_config(tmp_path)
         assert loaded is not None
-        assert "cursor" in loaded.targets
 
     def test_init_warns_when_already_initialized(self, tmp_path: Path):
         setup_project(tmp_path)
@@ -245,7 +242,7 @@ class TestPromote:
 
 
 class TestSync:
-    def test_sync_writes_agent_files(self, tmp_path: Path):
+    def test_sync_writes_skill_file(self, tmp_path: Path):
         setup_project(tmp_path)
 
         storage = require_module("self_evolve.storage")
@@ -265,9 +262,9 @@ class TestSync:
         app = build_app(tmp_path, io)
         result = runner.invoke(app, ["sync"])
         assert result.exit_code == 0
-        assert "cursor" in result.output.lower() or "copilot" in result.output.lower()
+        assert "SKILL.md" in result.output or "1" in result.output
 
-        assert (tmp_path / ".cursor" / "rules" / "self-evolve.mdc").exists()
+        assert (tmp_path / ".agents" / "skills" / "self-evolve" / "SKILL.md").exists()
 
     def test_sync_with_no_rules(self, tmp_path: Path):
         setup_project(tmp_path)
@@ -281,12 +278,11 @@ class TestEvolve:
     def test_evolve_runs_full_cycle(self, tmp_path: Path):
         config_module = require_module("self_evolve.config")
         config = config_module.SelfEvolveConfig(
-            targets=["cursor"],
             promotion_threshold=2,
             min_task_count=2,
         )
         config_module.save_config(tmp_path, config)
-        (tmp_path / ".self-evolve").mkdir(exist_ok=True)
+        (tmp_path / ".agents" / "self-evolve").mkdir(parents=True, exist_ok=True)
 
         storage = require_module("self_evolve.storage")
         models = require_module("self_evolve.models")
