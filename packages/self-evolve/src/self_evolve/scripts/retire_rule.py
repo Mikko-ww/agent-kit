@@ -24,9 +24,22 @@ def main() -> None:
         print(f"Rule not found: {rule_id}", file=sys.stderr)
         sys.exit(1)
 
-    data = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as e:
+        print(f"Failed to read rule file {path}: {e}", file=sys.stderr)
+        sys.exit(1)
+    except json.JSONDecodeError as e:
+        print(f"Failed to parse JSON in rule file {path}: {e}", file=sys.stderr)
+        sys.exit(1)
+
     data["status"] = "retired"
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    try:
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    except OSError as e:
+        print(f"Failed to write rule file {path}: {e}", file=sys.stderr)
+        sys.exit(1)
     print(f"Retired rule: {rule_id}")
 
 

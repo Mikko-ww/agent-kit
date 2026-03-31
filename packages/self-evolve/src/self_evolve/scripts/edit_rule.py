@@ -29,7 +29,11 @@ def main() -> None:
         print(f"Rule not found: {args.rule_id}", file=sys.stderr)
         sys.exit(1)
 
-    data = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"Failed to load rule JSON for {args.rule_id}: {exc}", file=sys.stderr)
+        sys.exit(1)
     if args.title is not None:
         data["title"] = args.title
     if args.statement is not None:

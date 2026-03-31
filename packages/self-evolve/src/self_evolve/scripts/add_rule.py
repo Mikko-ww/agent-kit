@@ -29,7 +29,10 @@ def _next_rule_id(rules_dir: Path) -> str:
 
 
 def _build_fingerprint(domain: str, statement: str) -> str:
-    normalized = re.sub(r"[^a-z0-9]+", "-", statement.lower()).strip("-")
+    normalized = re.sub(r"[^\w]+", "-", statement.lower(), flags=re.UNICODE).strip("-")
+    if not normalized:
+        import hashlib
+        normalized = hashlib.md5(statement.encode("utf-8")).hexdigest()[:16]
     return f"{domain}:{normalized}"
 
 

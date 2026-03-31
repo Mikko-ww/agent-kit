@@ -99,3 +99,50 @@ def test_list_rules(tmp_path: Path):
     )
     assert result.returncode == 0
     assert "R-001" in result.stdout
+
+
+def test_add_rule_chinese_no_false_duplicate(tmp_path: Path):
+    """中文规则不应因 fingerprint 退化为空而误报重复。"""
+    scripts_dir = _setup_scripts(tmp_path)
+    subprocess.run(
+        [sys.executable, str(scripts_dir / "add_rule.py"),
+         "--title", "规则一", "--statement", "始终使用中文注释", "--rationale", "统一风格",
+         "--domain", "代码风格"],
+        capture_output=True, text=True,
+    )
+    result = subprocess.run(
+        [sys.executable, str(scripts_dir / "add_rule.py"),
+         "--title", "规则二", "--statement", "始终使用类型注解", "--rationale", "提高可读性",
+         "--domain", "代码风格"],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0
+    assert "Warning" not in result.stderr
+
+
+def test_retire_rule_corrupt_json(tmp_path: Path):
+    """retire_rule 遇到损坏 JSON 应报错而非崩溃。"""
+    scripts_dir = _setup_scripts(tmp_path)
+    rules_dir = tmp_path / ".agents" / "self-evolve" / "rules"
+    rules_dir.mkdir(parents=True)
+    (rules_dir / "R-001.json").write_text("not valid json", encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, str(scripts_dir / "retire_rule.py"), "R-001"],
+        capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert "Failed" in result.stderr
+
+
+def test_edit_rule_corrupt_json(tmp_path: Path):
+    """edit_rule 遇到损坏 JSON 应报错而非崩溃。"""
+    scripts_dir = _setup_scripts(tmp_path)
+    rules_dir = tmp_path / ".agents" / "self-evolve" / "rules"
+    rules_dir.mkdir(parents=True)
+    (rules_dir / "R-001.json").write_text("{invalid", encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, str(scripts_dir / "edit_rule.py"), "R-001", "--title", "New"],
+        capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert "Failed" in result.stderr
