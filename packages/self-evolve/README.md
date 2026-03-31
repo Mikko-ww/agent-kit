@@ -1,19 +1,17 @@
 # self-evolve
 
-`self-evolve` 是 `agent-kit` 的第一方插件，用来把项目内的结构化工作会话沉淀成可审核、可追溯、可同步的知识规则。
+`self-evolve` 是 `agent-kit` 的第一方插件，用来把项目中的可复用知识沉淀为结构化规则，并自动同步到 Agent 可消费的 Skill 输出。
 
-它不再使用旧版的 `learning -> analyze -> promote -> evolve` 模型，而是固定采用下面这条流水线：
+v5 采用 Rule-only 极简架构：
 
 ```text
-session -> candidate -> rule -> skill sync
+Agent 反思 → 脚本写入 Rule → sync → SKILL.md
 ```
 
 ## 核心模型
 
-- `session`：一次任务或开发会话的结构化事实输入。
-- `candidate`：从 session 中检测出的待确认知识候选。
-- `rule`：已经批准、可直接供 Agent 消费的正式规则。
-- `skill sync`：把 active rule 同步到 `.agents/skills/self-evolve/`。
+- `Rule`：已批准的正式规则，由 Agent 通过脚本直接创建和管理。
+- `Skill sync`：把 active rule 同步到 `.agents/skills/self-evolve/`。
 
 ## 安装
 
@@ -31,91 +29,57 @@ agent-kit self-evolve init
 ```
 
 `init` 会在创建项目知识库时询问一次模板语言，只允许选择 `en` 或 `zh-CN`。
-默认值取自 `AGENT_KIT_LANG`；确认后的语言会写入 `.agents/self-evolve/config.jsonc`，供后续 `sync` 和模板更新时复用。
 
 初始化后会创建：
 
 - `.agents/self-evolve/config.jsonc`
-- `.agents/self-evolve/sessions/`
-- `.agents/self-evolve/candidates/`
 - `.agents/self-evolve/rules/`
-- `.agents/self-evolve/indexes/`
 - `.agents/skills/self-evolve/SKILL.md`
+- `.agents/skills/self-evolve/scripts/`
 
-### 2. 记录 session
+### 2. 通过 Skill 触发反思注入
 
-```bash
-agent-kit self-evolve session record \
-  --summary "修复启动阶段环境变量校验" \
-  --domain debugging \
-  --outcome success \
-  --lesson "服务启动前必须先校验必填环境变量" \
-  --tag env \
-  --file src/app.py
-```
+当 Agent 加载了 `SKILL.md` 后，用户可以要求 Agent "总结本次经验" 或 "提取规则"。Agent 会按照 Skill 中的反思注入指令，自动调用脚本写入规则。
 
-### 3. 运行候选检测
+### 3. 直接使用脚本管理规则
 
 ```bash
-agent-kit self-evolve detect run
-```
-
-### 4. 审核 candidate
-
-```bash
-agent-kit self-evolve candidate list
-agent-kit self-evolve candidate show C-001
-agent-kit self-evolve candidate accept C-001
-```
-
-### 5. 或直接录入正式 rule
-
-```bash
-agent-kit self-evolve rule add \
+# 新增规则
+python .agents/skills/self-evolve/scripts/add_rule.py \
   --title "启动前校验环境变量" \
   --statement "在服务启动前校验所有必填环境变量。" \
   --rationale "避免进入部分启动成功、运行时再失败的状态。" \
   --domain debugging \
   --tag env
+
+# 列出规则
+python .agents/skills/self-evolve/scripts/list_rules.py
+
+# 搜索规则
+python .agents/skills/self-evolve/scripts/find_rules.py --keyword "environment"
+
+# 编辑规则
+python .agents/skills/self-evolve/scripts/edit_rule.py R-001 --title "新标题"
+
+# 停用规则
+python .agents/skills/self-evolve/scripts/retire_rule.py R-001
 ```
 
-### 6. 同步 Skill
+### 4. 同步到 Skill 输出
 
 ```bash
 agent-kit self-evolve sync
 ```
 
-## 命令总览
+### 5. 通过 Git diff 审核
 
-### 根命令
+新规则写入后，建议通过 `git diff` 审核后再提交。
+
+## 命令总览
 
 - `agent-kit self-evolve init`
 - `agent-kit self-evolve sync`
 - `agent-kit self-evolve status`
-
-### session
-
-- `agent-kit self-evolve session record`
-
-### detect
-
-- `agent-kit self-evolve detect run`
-
-### candidate
-
-- `agent-kit self-evolve candidate list`
-- `agent-kit self-evolve candidate show <candidate-id>`
-- `agent-kit self-evolve candidate accept <candidate-id>`
-- `agent-kit self-evolve candidate reject <candidate-id>`
-- `agent-kit self-evolve candidate edit <candidate-id>`
-
-### rule
-
-- `agent-kit self-evolve rule add`
-- `agent-kit self-evolve rule list`
-- `agent-kit self-evolve rule show <rule-id>`
-- `agent-kit self-evolve rule edit <rule-id>`
-- `agent-kit self-evolve rule retire <rule-id>`
 
 ## 配置
 
@@ -128,17 +92,13 @@ agent-kit self-evolve sync
 ```jsonc
 {
   "plugin_id": "self-evolve",
-  "config_version": 4,
+  "config_version": 5,
   "language": "zh-CN",
-  "auto_accept_enabled": false,
-  "auto_accept_min_confidence": 0.9,
   "inline_threshold": 20
 }
 ```
 
 - `language`：项目模板语言。`init` 时由用户选择并写入配置；后续 `sync` 优先使用该值。
-- `auto_accept_enabled`：是否允许候选在检测阶段自动生效。
-- `auto_accept_min_confidence`：自动生效所需最低置信度。
 - `inline_threshold`：Skill 输出在 inline/index 策略之间切换的阈值。
 
 模板语言决议固定为：
@@ -154,37 +114,31 @@ agent-kit self-evolve sync
 ├── .agents/
 │   ├── self-evolve/
 │   │   ├── config.jsonc
-│   │   ├── sessions/
-│   │   ├── candidates/
-│   │   ├── rules/
-│   │   └── indexes/
+│   │   └── rules/
 │   └── skills/
 │       └── self-evolve/
 │           ├── SKILL.md
 │           ├── catalog.json
-│           ├── scripts/find_rules.py
+│           ├── scripts/
+│           │   ├── add_rule.py
+│           │   ├── edit_rule.py
+│           │   ├── retire_rule.py
+│           │   ├── list_rules.py
+│           │   └── find_rules.py
 │           └── domains/
 ```
 
 ## Skill 输出
 
-`sync` 只消费 `status=active` 的正式 rule，不会把 candidate 或 session 暴露给 Skill 消费侧。
+`sync` 只消费 `status=active` 的正式 rule。
 
 - `inline`：规则数不超过 `inline_threshold` 时，直接内联到 `SKILL.md`
 - `index`：规则数超阈值时，`SKILL.md` 只给索引，详细内容写入 `domains/*.md`
 
-项目内可直接用脚本检索：
-
-```bash
-python .agents/skills/self-evolve/scripts/find_rules.py --stats
-python .agents/skills/self-evolve/scripts/find_rules.py --keyword "environment"
-python .agents/skills/self-evolve/scripts/find_rules.py --detail --domain debugging
-```
+SKILL.md 包含反思注入指令，引导 Agent 从对话上下文中提取结构化知识并调用脚本写入规则。
 
 ## 重要说明
 
-- 不做任何前向兼容。
-- 旧版 `.agents/self-evolve/learnings/`、`.agents/self-evolve/rules.jsonc` 和旧 CLI 已全部废弃。
-- 发现旧布局时会直接报错，不提供自动迁移。
+- v5 是完全重写，不兼容旧版本。
 - CLI 继续支持 `en` 与 `zh-CN`，语言决议顺序与 `agent-kit` core 保持一致。
 - Skill 模板语言与 CLI 语言解耦：CLI 继续跟随 core 决议链，生成模板则优先遵循项目配置中的 `language`。
