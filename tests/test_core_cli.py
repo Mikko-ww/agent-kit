@@ -656,3 +656,107 @@ def test_alias_help_uses_zh_cn_when_config_requests_it(tmp_path: Path, monkeypat
 
     assert result.exit_code == 0
     assert "管理 agent-kit CLI 别名。" in result.output
+
+
+def test_app_has_completion_enabled():
+    """Typer 内置补全引擎应被启用（不再有 add_completion=False）。"""
+    source = Path("src/agent_kit/cli.py").read_text(encoding="utf-8")
+    assert "add_completion=False" not in source
+
+
+def test_typer_default_completion_options_are_hidden():
+    """Typer 默认注入的 --install-completion 和 --show-completion 应被隐藏，
+    由自定义 completion 子命令代替。"""
+    cli = require_module("agent_kit.cli")
+    manager = SimpleNamespace(runnable_plugins=lambda: [], broken_plugins=lambda: [])
+    app = cli.create_app(manager_factory=lambda: manager)
+    result = CliRunner().invoke(app, ["--help"])
+    assert result.exit_code == 0
+    assert "--install-completion" not in result.output
+    assert "--show-completion" not in result.output
+
+
+def test_completion_subcommand_appears_in_help():
+    """completion 子命令应出现在主帮助输出中。"""
+    cli = require_module("agent_kit.cli")
+    manager = SimpleNamespace(runnable_plugins=lambda: [], broken_plugins=lambda: [])
+    app = cli.create_app(manager_factory=lambda: manager)
+    result = CliRunner().invoke(app, ["--help"])
+    assert result.exit_code == 0
+    assert "completion" in result.output
+
+
+def test_completion_install_command_exists():
+    """completion install 子命令应可调用。"""
+    cli = require_module("agent_kit.cli")
+    manager = SimpleNamespace(runnable_plugins=lambda: [], broken_plugins=lambda: [])
+    app = cli.create_app(manager_factory=lambda: manager)
+    result = CliRunner().invoke(app, ["completion", "install", "--help"])
+    assert result.exit_code == 0
+    assert "install" in result.output.lower() or "--shell" in result.output
+
+
+def test_completion_show_outputs_script():
+    """completion show 应输出补全脚本内容。"""
+    cli = require_module("agent_kit.cli")
+    manager = SimpleNamespace(runnable_plugins=lambda: [], broken_plugins=lambda: [])
+    app = cli.create_app(manager_factory=lambda: manager)
+    result = CliRunner().invoke(app, ["completion", "show"])
+    assert result.exit_code == 0
+    assert "_AGENT_KIT_COMPLETE" in result.output
+    assert "compdef" in result.output
+
+
+def test_completion_remove_command_exists():
+    """completion remove 子命令应可调用。"""
+    cli = require_module("agent_kit.cli")
+    manager = SimpleNamespace(runnable_plugins=lambda: [], broken_plugins=lambda: [])
+    app = cli.create_app(manager_factory=lambda: manager)
+    result = CliRunner().invoke(app, ["completion", "remove", "--help"])
+    assert result.exit_code == 0
+
+
+def test_reserved_command_names_includes_completion():
+    """RESERVED_COMMAND_NAMES 应包含 'completion'。"""
+    cli = require_module("agent_kit.cli")
+    assert "completion" in cli.RESERVED_COMMAND_NAMES
+
+
+def test_completion_show_zsh_outputs_valid_script():
+    """completion show --shell zsh 应输出包含 compdef 和 _AGENT_KIT_COMPLETE 的脚本。"""
+    cli = require_module("agent_kit.cli")
+    manager = SimpleNamespace(runnable_plugins=lambda: [], broken_plugins=lambda: [])
+    app = cli.create_app(manager_factory=lambda: manager)
+    result = CliRunner().invoke(app, ["completion", "show", "--shell", "zsh"])
+    assert result.exit_code == 0
+    assert "compdef" in result.output
+    assert "_AGENT_KIT_COMPLETE" in result.output
+    assert "agent-kit" in result.output
+    assert "ak" in result.output
+
+
+def test_completion_show_unsupported_shell_fails():
+    """completion show --shell bash 应报错退出（当前仅支持 zsh）。"""
+    cli = require_module("agent_kit.cli")
+    manager = SimpleNamespace(runnable_plugins=lambda: [], broken_plugins=lambda: [])
+    app = cli.create_app(manager_factory=lambda: manager)
+    result = CliRunner().invoke(app, ["completion", "show", "--shell", "bash"])
+    assert result.exit_code != 0
+
+
+def test_completion_install_unsupported_shell_fails():
+    """completion install --shell fish 应报错退出。"""
+    cli = require_module("agent_kit.cli")
+    manager = SimpleNamespace(runnable_plugins=lambda: [], broken_plugins=lambda: [])
+    app = cli.create_app(manager_factory=lambda: manager)
+    result = CliRunner().invoke(app, ["completion", "install", "--shell", "fish"])
+    assert result.exit_code != 0
+
+
+def test_completion_remove_unsupported_shell_fails():
+    """completion remove --shell powershell 应报错退出。"""
+    cli = require_module("agent_kit.cli")
+    manager = SimpleNamespace(runnable_plugins=lambda: [], broken_plugins=lambda: [])
+    app = cli.create_app(manager_factory=lambda: manager)
+    result = CliRunner().invoke(app, ["completion", "remove", "--shell", "powershell"])
+    assert result.exit_code != 0

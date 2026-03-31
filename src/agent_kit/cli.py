@@ -6,6 +6,11 @@ from agent_kit import __version__
 from agent_kit.alias import disable_alias, enable_alias, get_alias_status
 from agent_kit.locale import SUPPORTED_LANGUAGES, load_config_language, resolve_language, save_config_language
 from agent_kit.messages import translate
+from agent_kit.completion import (
+    generate_zsh_completion_script,
+    install_zsh_completion,
+    remove_zsh_completion,
+)
 from agent_kit.plugin_manager import PluginError, PluginManager
 from agent_kit.paths import AgentKitLayout
 
@@ -14,7 +19,7 @@ PLUGIN_COMMAND_ALIASES = {
     "self-evolve": "se",
     "skills-link": "sl",
 }
-RESERVED_COMMAND_NAMES = frozenset({"plugins", "config", "alias"})
+RESERVED_COMMAND_NAMES = frozenset({"plugins", "config", "alias", "completion"})
 GLOBAL_CONFIG_KEYS = {
     "language": {
         "values": ", ".join(SUPPORTED_LANGUAGES),
@@ -40,12 +45,12 @@ def create_app(
     app = typer.Typer(
         help=_t(language, "app.help"),
         no_args_is_help=True,
-        add_completion=False,
         epilog=_build_epilog(manager, language),
     )
 
-    @app.callback()
+    @app.callback(invoke_without_command=True)
     def _root_callback(
+        ctx: Context,
         version: bool = typer.Option(
             False,
             "--version",
@@ -57,9 +62,14 @@ def create_app(
     ) -> None:
         return
 
-    plugins_app = typer.Typer(help=_t(language, "plugins.help"), no_args_is_help=True, add_completion=False)
-    config_app = typer.Typer(help=_t(language, "config.help"), no_args_is_help=True, add_completion=False)
-    alias_app = typer.Typer(help=_t(language, "alias.help"), no_args_is_help=True, add_completion=False)
+    # 隐藏 Typer 默认注入的 --install-completion 和 --show-completion，
+    # 由自定义 completion 子命令组代替。Click 底层的 _AGENT_KIT_COMPLETE
+    # 环境变量补全机制不受影响。
+    app._add_completion = False
+
+    plugins_app = typer.Typer(help=_t(language, "plugins.help"), no_args_is_help=True)
+    config_app = typer.Typer(help=_t(language, "config.help"), no_args_is_help=True)
+    alias_app = typer.Typer(help=_t(language, "alias.help"), no_args_is_help=True)
 
     @plugins_app.command("refresh", help=_t(language, "plugins.refresh.help"))
     def refresh_command() -> None:
@@ -173,9 +183,54 @@ def create_app(
         path_key = "alias.status.path.ready" if status.path_in_path else "alias.status.path.missing"
         typer.echo(_t(language, path_key, value=status.bin_dir))
 
+    completion_app = typer.Typer(help=_t(language, "completion.help"), no_args_is_help=True)
+
+    @completion_app.command("install", help=_t(language, "completion.install.help"))
+    def completion_install_command(
+        shell: str = typer.Option("zsh", "--shell", "-s", help="Shell type"),
+    ) -> None:
+        if shell != "zsh":
+            typer.secho(
+                _t(language, "completion.shell.unsupported", shell=shell),
+                fg=typer.colors.RED, err=True,
+            )
+            raise typer.Exit(code=1)
+        result = install_zsh_completion()
+        key = f"completion.install.{result.method}"
+        typer.echo(_t(language, key, path=result.path))
+
+    @completion_app.command("show", help=_t(language, "completion.show.help"))
+    def completion_show_command(
+        shell: str = typer.Option("zsh", "--shell", "-s", help="Shell type"),
+    ) -> None:
+        if shell != "zsh":
+            typer.secho(
+                _t(language, "completion.shell.unsupported", shell=shell),
+                fg=typer.colors.RED, err=True,
+            )
+            raise typer.Exit(code=1)
+        typer.echo(generate_zsh_completion_script())
+
+    @completion_app.command("remove", help=_t(language, "completion.remove.help"))
+    def completion_remove_command(
+        shell: str = typer.Option("zsh", "--shell", "-s", help="Shell type"),
+    ) -> None:
+        if shell != "zsh":
+            typer.secho(
+                _t(language, "completion.shell.unsupported", shell=shell),
+                fg=typer.colors.RED, err=True,
+            )
+            raise typer.Exit(code=1)
+        result = remove_zsh_completion()
+        if result.removed:
+            typer.echo(_t(language, "completion.remove.done", path=result.path))
+        else:
+            typer.echo(_t(language, "completion.remove.not_found"))
+
     app.add_typer(plugins_app, name="plugins")
     app.add_typer(config_app, name="config")
     app.add_typer(alias_app, name="alias")
+    app.add_typer(completion_app, name="completion")
 
     for plugin in runnable_plugins:
         plugin_alias = plugin_aliases.get(plugin.plugin_id)

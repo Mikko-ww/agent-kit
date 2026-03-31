@@ -124,6 +124,21 @@ ak oes status
 - `agent-kit <plugin-id> --help` 和对应短名 `--help` 都会直接显示插件自己的帮助信息
 - root help 会在 canonical 插件命令旁标注 alias，但 alias 本身不作为独立 help 项显示
 
+## Shell 补全
+
+`agent-kit` 支持 Zsh 命令补全，补全同时覆盖 `agent-kit` 和 `ak` 两个命令。
+
+```bash
+agent-kit completion install    # 安装补全
+agent-kit completion show       # 查看补全脚本
+agent-kit completion remove     # 卸载补全
+```
+
+当前仅支持 Zsh。安装时会自动检测 oh-my-zsh 环境：
+
+- **oh-my-zsh 用户**：补全脚本安装到 `$ZSH_CUSTOM/plugins/agent-kit/`，需要在 `~/.zshrc` 的 `plugins=(...)` 中添加 `agent-kit`
+- **非 oh-my-zsh 用户**：补全脚本安装到 `~/.zfunc/_agent-kit`，需要在 `~/.zshrc` 中添加 `fpath=(~/.zfunc $fpath)` 和 `autoload -Uz compinit && compinit`
+
 ## CLI 多语言
 
 `agent-kit` 与第一方插件当前支持 `en` 和 `zh-CN`，默认语言是英文。
