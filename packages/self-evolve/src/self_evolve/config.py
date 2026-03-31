@@ -7,7 +7,7 @@ from self_evolve import CONFIG_VERSION, PLUGIN_ID
 from self_evolve.jsonc import load_jsonc, write_jsonc
 
 # 项目内自我进化数据目录（位于 .agents/ 下）
-EVOLVE_DIR_PARTS = (".agents", "self-evolve")
+_EVOLVE_DIR = ".agents/self-evolve"
 
 
 @dataclass(slots=True, frozen=True)
@@ -19,7 +19,7 @@ class SelfEvolveConfig:
 
 
 def evolve_dir(project_root: Path) -> Path:
-    return project_root / EVOLVE_DIR_PARTS[0] / EVOLVE_DIR_PARTS[1]
+    return project_root / _EVOLVE_DIR
 
 
 def config_file_path(project_root: Path) -> Path:
@@ -35,7 +35,7 @@ def find_project_root(start: Path) -> Path | None:
     """从 start 向上查找包含 .agents/self-evolve/ 或 .git/ 的目录。"""
     current = start.resolve()
     while True:
-        if (current / EVOLVE_DIR_PARTS[0] / EVOLVE_DIR_PARTS[1]).is_dir():
+        if (current / _EVOLVE_DIR).is_dir():
             return current
         if (current / ".git").exists():
             return current

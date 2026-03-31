@@ -111,7 +111,7 @@ class TestInit:
         app = build_app(tmp_path, io)
         result = runner.invoke(app, ["init"])
         assert result.exit_code == 0
-        assert "skill" in result.output.lower() or "SKILL.md" in result.output
+        assert "SKILL.md" in result.output
 
         config_module = require_module("self_evolve.config")
         loaded = config_module.load_config(tmp_path)

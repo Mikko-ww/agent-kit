@@ -21,9 +21,9 @@ def sync_skill(
     rules: list[PromotedRule],
 ) -> SyncResult:
     """将规则同步到 .agents/skills/self-evolve/SKILL.md。"""
-    target = skill_dir(project_root)
-    target.mkdir(parents=True, exist_ok=True)
-    path = target / "SKILL.md"
+    output_dir = skill_dir(project_root)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    path = output_dir / "SKILL.md"
     content = _render_skill(rules)
     path.write_text(content, encoding="utf-8")
     return SyncResult(path=path, rules_count=len(rules))
