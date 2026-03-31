@@ -10,6 +10,7 @@ from agent_kit.plugin_manager import PluginError, PluginManager
 from agent_kit.paths import AgentKitLayout
 
 PLUGIN_COMMAND_ALIASES = {
+    "self-evolve": "se",
     "skills-link": "sl",
     "opencode-env-switch": "oes",
 }

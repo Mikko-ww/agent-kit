@@ -14,6 +14,19 @@
       "api_version": 1,
       "min_core_version": "0.1.0"
     },
+    "self-evolve": {
+      "plugin_id": "self-evolve",
+      "display_name": "Self Evolve",
+      "description": "Project-level self-evolution toolkit.",
+      "source_type": "git",
+      "package_name": "self-evolve",
+      "git_url": "https://github.com/Mikko-ww/agent-kit.git",
+      "subdirectory": "packages/self-evolve",
+      "version": "0.1.2",
+      "tag": "self-evolve-v0.1.2",
+      "api_version": 1,
+      "min_core_version": "0.1.0"
+    },
     "skills-link": {
       "plugin_id": "skills-link",
       "display_name": "Skills Link",

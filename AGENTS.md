@@ -38,6 +38,7 @@
 - 当前第一方插件包括：
   - `skills-link`：把本地 skills 目录按目录粒度链接到目标目录。
   - `opencode-env-switch`：通过 shell 环境变量切换 OpenCode profile。
+  - `self-evolve`：项目级自我进化工具，统一在 `.agents/` 目录管理记忆和技能。
 
 ## 4. 顶层目录导航
 
@@ -49,6 +50,8 @@
   插件自身规则见 [packages/skills-link/AGENTS.md](packages/skills-link/AGENTS.md)
 - [packages/opencode-env-switch](packages/opencode-env-switch)：OpenCode profile 切换插件
   插件自身规则见 [packages/opencode-env-switch/AGENTS.md](packages/opencode-env-switch/AGENTS.md)
+- [packages/self-evolve](packages/self-evolve)：项目级自我进化插件
+  插件自身规则见 [packages/self-evolve/AGENTS.md](packages/self-evolve/AGENTS.md)
 - [scripts](scripts)：开发与发布辅助脚本
   具体约束见 [scripts/AGENTS.md](scripts/AGENTS.md)
 - [docs](docs)：设计文档与实施计划
