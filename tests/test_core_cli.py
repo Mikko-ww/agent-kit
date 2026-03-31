@@ -238,11 +238,12 @@ def test_root_help_shows_plugin_alias_hints_but_hides_alias_commands():
 
     assert result.exit_code == 0
     assert "skills-link" in result.output
-    assert "sl）" in result.output
+    assert "alias: sl" in result.output
     assert "opencode-env-switch" in result.output
-    assert "oes）" in result.output
+    assert "alias:" in result.output
+    assert "oes)" in result.output
     assert "self-evolve" in result.output
-    assert "se）" in result.output
+    assert "alias: se" in result.output
     assert "\n│ sl " not in result.output
     assert "\n│ oes " not in result.output
     assert "\n│ se " not in result.output
