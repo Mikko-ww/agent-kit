@@ -10,6 +10,7 @@ from agent_kit.completion import (
     generate_zsh_completion_script,
     install_zsh_completion,
     remove_zsh_completion,
+    SupportedShell,
 )
 from agent_kit.plugin_manager import PluginError, PluginManager
 from agent_kit.paths import AgentKitLayout
@@ -186,11 +187,11 @@ def create_app(
 
     @completion_app.command("install", help=_t(language, "completion.install.help"))
     def completion_install_command(
-        shell: str = typer.Option("zsh", "--shell", "-s", help="Shell type"),
+        shell: SupportedShell = typer.Option(SupportedShell.ZSH, "--shell", "-s", help="Shell type"),
     ) -> None:
-        if shell != "zsh":
+        if shell != SupportedShell.ZSH:
             typer.secho(
-                _t(language, "completion.shell.unsupported", shell=shell),
+                _t(language, "completion.shell.unsupported", shell=shell.value),
                 fg=typer.colors.RED, err=True,
             )
             raise typer.Exit(code=1)
@@ -200,11 +201,11 @@ def create_app(
 
     @completion_app.command("show", help=_t(language, "completion.show.help"))
     def completion_show_command(
-        shell: str = typer.Option("zsh", "--shell", "-s", help="Shell type"),
+        shell: SupportedShell = typer.Option(SupportedShell.ZSH, "--shell", "-s", help="Shell type"),
     ) -> None:
-        if shell != "zsh":
+        if shell != SupportedShell.ZSH:
             typer.secho(
-                _t(language, "completion.shell.unsupported", shell=shell),
+                _t(language, "completion.shell.unsupported", shell=shell.value),
                 fg=typer.colors.RED, err=True,
             )
             raise typer.Exit(code=1)
@@ -212,11 +213,11 @@ def create_app(
 
     @completion_app.command("remove", help=_t(language, "completion.remove.help"))
     def completion_remove_command(
-        shell: str = typer.Option("zsh", "--shell", "-s", help="Shell type"),
+        shell: SupportedShell = typer.Option(SupportedShell.ZSH, "--shell", "-s", help="Shell type"),
     ) -> None:
-        if shell != "zsh":
+        if shell != SupportedShell.ZSH:
             typer.secho(
-                _t(language, "completion.shell.unsupported", shell=shell),
+                _t(language, "completion.shell.unsupported", shell=shell.value),
                 fg=typer.colors.RED, err=True,
             )
             raise typer.Exit(code=1)

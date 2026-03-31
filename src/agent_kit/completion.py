@@ -3,9 +3,17 @@ from __future__ import annotations
 import os
 import shutil
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 
 MANAGED_COMPLETION_MARKER = "# agent-kit managed completion"
+COMPLETION_SCRIPT_VERSION = "1.0.0"
+
+
+class SupportedShell(str, Enum):
+    """支持的 Shell 类型。"""
+    ZSH = "zsh"
+    # 未来可扩展: BASH = "bash", FISH = "fish"
 
 
 def detect_omz_custom_dir(home: Path | None = None) -> Path | None:
@@ -32,13 +40,17 @@ def generate_zsh_completion_script() -> str:
     return "\n".join([
         "#compdef agent-kit ak",
         "",
-        MANAGED_COMPLETION_MARKER,
+        f"{MANAGED_COMPLETION_MARKER} v{COMPLETION_SCRIPT_VERSION}",
         "",
         '_agent-kit() {',
-        '    eval "$(COMP_WORDS="${words[*]}" \\',
-        '            COMP_CWORD=$((CURRENT-1)) \\',
-        '            _AGENT_KIT_COMPLETE=zsh_complete \\',
-        '            agent-kit)"',
+        '    local completions',
+        '    completions=$(COMP_WORDS="${words[*]}" \\',
+        '                  COMP_CWORD=$((CURRENT-1)) \\',
+        '                  _AGENT_KIT_COMPLETE=zsh_complete \\',
+        '                  agent-kit 2>/dev/null)',
+        '    if [[ $? -eq 0 && -n "$completions" ]]; then',
+        '        eval "$completions"',
+        '    fi',
         '}',
         "",
         "compdef _agent-kit agent-kit",
@@ -50,8 +62,15 @@ def generate_zsh_completion_script() -> str:
 def generate_omz_plugin_zsh() -> str:
     """生成 oh-my-zsh 插件入口文件内容。"""
     return "\n".join([
-        MANAGED_COMPLETION_MARKER + " plugin",
+        f"{MANAGED_COMPLETION_MARKER} plugin v{COMPLETION_SCRIPT_VERSION}",
+        "#",
+        "# This file is managed by agent-kit. Do not edit manually.",
+        "# To regenerate: agent-kit completion install",
+        "#",
+        "# Add plugin directory to fpath for completion discovery",
         "fpath=(${0:A:h} $fpath)",
+        "",
+        "# Register completions for agent-kit and ak alias",
         "compdef _agent-kit agent-kit",
         "compdef _agent-kit ak",
         "",
@@ -83,32 +102,69 @@ def install_zsh_completion(home: Path | None = None) -> CompletionInstallResult:
 def _install_omz(custom_dir: Path) -> CompletionInstallResult:
     plugin_dir = custom_dir / "plugins" / "agent-kit"
     plugin_dir.mkdir(parents=True, exist_ok=True)
+
     comp_file = plugin_dir / "_agent-kit"
-    comp_file.write_text(generate_zsh_completion_script(), encoding="utf-8")
     plugin_zsh = plugin_dir / "agent-kit.plugin.zsh"
-    plugin_zsh.write_text(generate_omz_plugin_zsh(), encoding="utf-8")
-    return CompletionInstallResult(method="omz", path=comp_file, changed=True)
+
+    comp_content = generate_zsh_completion_script()
+    plugin_content = generate_omz_plugin_zsh()
+
+    changed = False
+    if not comp_file.exists() or comp_file.read_text(encoding="utf-8") != comp_content:
+        comp_file.write_text(comp_content, encoding="utf-8")
+        changed = True
+    if not plugin_zsh.exists() or plugin_zsh.read_text(encoding="utf-8") != plugin_content:
+        plugin_zsh.write_text(plugin_content, encoding="utf-8")
+        changed = True
+
+    return CompletionInstallResult(method="omz", path=comp_file, changed=changed)
 
 
 def _install_zfunc(home: Path) -> CompletionInstallResult:
     zfunc_dir = home / ".zfunc"
     zfunc_dir.mkdir(parents=True, exist_ok=True)
     comp_file = zfunc_dir / "_agent-kit"
-    comp_file.write_text(generate_zsh_completion_script(), encoding="utf-8")
-    return CompletionInstallResult(method="zfunc", path=comp_file, changed=True)
+
+    comp_content = generate_zsh_completion_script()
+    changed = False
+    if not comp_file.exists() or comp_file.read_text(encoding="utf-8") != comp_content:
+        comp_file.write_text(comp_content, encoding="utf-8")
+        changed = True
+
+    return CompletionInstallResult(method="zfunc", path=comp_file, changed=changed)
+
+
+def _is_managed_installation(comp_file: Path) -> bool:
+    """检查补全文件是否包含 managed marker。"""
+    if not comp_file.exists():
+        return False
+    try:
+        content = comp_file.read_text(encoding="utf-8")
+        return MANAGED_COMPLETION_MARKER in content
+    except Exception:
+        return False
 
 
 def remove_zsh_completion(home: Path | None = None) -> CompletionRemoveResult:
-    """卸载已安装的 Zsh 补全脚本。"""
+    """卸载已安装的 Zsh 补全脚本。同时检查 oh-my-zsh 和 zfunc 两个位置。"""
     home = home or Path.home()
+    removed_paths = []
+
+    # 检查 oh-my-zsh 安装
     omz_custom = detect_omz_custom_dir(home=home)
     if omz_custom is not None:
         plugin_dir = omz_custom / "plugins" / "agent-kit"
-        if plugin_dir.exists():
+        comp_file = plugin_dir / "_agent-kit"
+        if plugin_dir.exists() and _is_managed_installation(comp_file):
             shutil.rmtree(plugin_dir)
-            return CompletionRemoveResult(removed=True, path=plugin_dir)
+            removed_paths.append(plugin_dir)
+
+    # 检查 zfunc 安装
     zfunc_file = home / ".zfunc" / "_agent-kit"
-    if zfunc_file.exists():
+    if zfunc_file.exists() and _is_managed_installation(zfunc_file):
         zfunc_file.unlink()
-        return CompletionRemoveResult(removed=True, path=zfunc_file)
+        removed_paths.append(zfunc_file)
+
+    if removed_paths:
+        return CompletionRemoveResult(removed=True, path=removed_paths[0])
     return CompletionRemoveResult(removed=False, path=None)
