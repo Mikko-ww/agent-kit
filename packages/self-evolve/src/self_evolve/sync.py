@@ -6,7 +6,7 @@ import json
 import shutil
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from string import Template
 
@@ -133,14 +133,24 @@ def _render_inline_section(rules: list[KnowledgeRule], language: str) -> str:
     return tpl.safe_substitute(domain_groups="\n".join(parts))
 
 
+def _parse_timestamp(ts: str) -> datetime:
+    """将 ISO 8601 时间戳解析为 datetime，支持 Z 和 +00:00 等格式。"""
+    normalized = ts.replace("Z", "+00:00")
+    try:
+        return datetime.fromisoformat(normalized)
+    except ValueError:
+        return datetime.min
+
+
 def _render_index_section(rules: list[KnowledgeRule], language: str) -> str:
     groups = _group_by_domain(rules)
     tpl = _load_template("skill_index", language)
     rows: list[str] = []
     for domain in sorted(groups):
         count = len(groups[domain])
-        latest = max(r.created_at for r in groups[domain])
-        rows.append(f"| {domain} | {count} | {latest[:10]} | [→ details](domains/{domain}.md) |")
+        latest_dt = max(_parse_timestamp(r.created_at) for r in groups[domain])
+        latest_str = latest_dt.strftime("%Y-%m-%d") if latest_dt != datetime.min else "unknown"
+        rows.append(f"| {domain} | {count} | {latest_str} | [→ details](domains/{domain}.md) |")
     return tpl.safe_substitute(domain_table_rows="\n".join(rows))
 
 

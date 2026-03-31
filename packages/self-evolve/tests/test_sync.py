@@ -103,3 +103,25 @@ def test_sync_falls_back_to_agent_kit_lang(tmp_path: Path, monkeypatch):
     save_rule(tmp_path, _make_rule())
     result = sync_skill(tmp_path)
     assert result.path.exists()
+
+
+def test_sync_index_mixed_timestamp_formats(tmp_path: Path):
+    """时间戳使用不同 ISO 格式（Z 和 +00:00）时应正确解析比较。"""
+    _init_project(tmp_path)
+    rule_z = _make_rule("R-001")
+    rule_z.created_at = "2026-03-01T12:00:00Z"
+    save_rule(tmp_path, rule_z)
+
+    rule_offset = _make_rule("R-002")
+    rule_offset.created_at = "2026-03-15T12:00:00+00:00"
+    save_rule(tmp_path, rule_offset)
+
+    for i in range(23):
+        r = _make_rule(f"R-{i + 3:03d}")
+        r.created_at = f"2026-01-{i + 1:02d}T00:00:00Z"
+        save_rule(tmp_path, r)
+
+    result = sync_skill(tmp_path, inline_threshold=20)
+    assert result.strategy == "index"
+    content = result.path.read_text(encoding="utf-8")
+    assert "2026-03-15" in content

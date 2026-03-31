@@ -93,11 +93,11 @@ def build_app(
         runtime = runtime_factory()
         if cwd is not None:
             runtime.cwd = cwd
-        project_root = runtime.cwd
-        existing_root = find_project_root(project_root)
+        existing_root = find_project_root(runtime.cwd)
         if existing_root is not None and load_config(existing_root) is not None:
             typer.echo(_tr(runtime, "warning.already_initialized", path=str(existing_root)))
             return
+        project_root = existing_root if existing_root is not None else runtime.cwd
         template_language = _prompt_template_language(runtime)
         rules_dir(project_root).mkdir(parents=True, exist_ok=True)
         save_config(project_root, SelfEvolveConfig(language=template_language))
@@ -109,7 +109,7 @@ def build_app(
         runtime = runtime_factory()
         if cwd is not None:
             runtime.cwd = cwd
-        project_root = runtime.cwd
+        project_root = find_project_root(runtime.cwd) or runtime.cwd
         cfg = load_config(project_root)
         if cfg is None:
             typer.echo(_tr(runtime, "warning.not_initialized"), err=True)
@@ -127,7 +127,7 @@ def build_app(
         runtime = runtime_factory()
         if cwd is not None:
             runtime.cwd = cwd
-        project_root = runtime.cwd
+        project_root = find_project_root(runtime.cwd) or runtime.cwd
         cfg = load_config(project_root)
         if cfg is None:
             typer.echo(_tr(runtime, "warning.not_initialized"), err=True)
