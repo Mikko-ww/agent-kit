@@ -174,6 +174,30 @@ def test_plugin_alias_forwards_opencode_env_switch_extra_args():
     assert calls == [("opencode-env-switch", ["status"])]
 
 
+def test_plugin_alias_forwards_self_evolve_extra_args():
+    cli = require_module("agent_kit.cli")
+    calls: list[tuple[str, list[str]]] = []
+    manager = SimpleNamespace(
+        runnable_plugins=lambda: [
+            SimpleNamespace(plugin_id="skills-link", description="Link local skills"),
+            SimpleNamespace(plugin_id="opencode-env-switch", description="Switch OpenCode env"),
+            SimpleNamespace(plugin_id="self-evolve", description="Self evolve"),
+        ],
+        broken_plugins=lambda: [],
+        run_plugin=lambda plugin_id, args: calls.append((plugin_id, args)) or SimpleNamespace(
+            returncode=0,
+            stdout="ok\n",
+            stderr="",
+        ),
+    )
+
+    app = cli.create_app(manager_factory=lambda: manager)
+    result = CliRunner().invoke(app, ["se", "status"])
+
+    assert result.exit_code == 0
+    assert calls == [("self-evolve", ["status"])]
+
+
 def test_plugin_alias_preserves_plugin_usage_output_on_nonzero_exit():
     cli = require_module("agent_kit.cli")
     manager = SimpleNamespace(
@@ -204,6 +228,7 @@ def test_root_help_shows_plugin_alias_hints_but_hides_alias_commands():
         runnable_plugins=lambda: [
             SimpleNamespace(plugin_id="skills-link", description="Link local skills"),
             SimpleNamespace(plugin_id="opencode-env-switch", description="Switch OpenCode env"),
+            SimpleNamespace(plugin_id="self-evolve", description="Self evolve"),
         ],
         broken_plugins=lambda: [],
     )
@@ -213,12 +238,14 @@ def test_root_help_shows_plugin_alias_hints_but_hides_alias_commands():
 
     assert result.exit_code == 0
     assert "skills-link" in result.output
-    assert "alias: sl" in result.output
+    assert "sl）" in result.output
     assert "opencode-env-switch" in result.output
-    assert "(alias:" in result.output
-    assert "oes)" in result.output
+    assert "oes）" in result.output
+    assert "self-evolve" in result.output
+    assert "se）" in result.output
     assert "\n│ sl " not in result.output
     assert "\n│ oes " not in result.output
+    assert "\n│ se " not in result.output
 
 
 def test_plugin_alias_is_not_registered_for_unavailable_plugin():

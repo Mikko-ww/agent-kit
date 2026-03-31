@@ -10,8 +10,9 @@ from agent_kit.plugin_manager import PluginError, PluginManager
 from agent_kit.paths import AgentKitLayout
 
 PLUGIN_COMMAND_ALIASES = {
-    "skills-link": "sl",
     "opencode-env-switch": "oes",
+    "self-evolve": "se",
+    "skills-link": "sl",
 }
 RESERVED_COMMAND_NAMES = frozenset({"plugins", "config", "alias"})
 GLOBAL_CONFIG_KEYS = {
