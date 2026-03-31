@@ -38,7 +38,8 @@ agent-kit self-evolve capture \
   --domain debugging \
   --priority high \
   --pattern-key env-var-validation \
-  --task-id task-42
+  --task-id task-42 \
+  --tags "env,validation"
 ```
 
 ### 3. Analyze patterns
@@ -74,6 +75,22 @@ This runs the full cycle: analyze → auto-promote eligible → sync.
 agent-kit self-evolve status
 ```
 
+### 8. Search rules
+
+```bash
+# Search by domain
+agent-kit self-evolve search --domain debugging
+
+# Search by tag
+agent-kit self-evolve search --tag env
+
+# Fuzzy keyword search
+agent-kit self-evolve search --keyword "environment"
+
+# Show domain statistics
+agent-kit self-evolve search --stats
+```
+
 ## Commands
 
 | Command | Description |
@@ -86,14 +103,23 @@ agent-kit self-evolve status
 | `sync` | Sync promoted rules to the unified skill file |
 | `evolve` | One-step: analyze + auto-promote + sync |
 | `status` | Show evolution status overview |
+| `search` | Search promoted rules by domain, tag, or keyword |
 
 ## Skill Discovery
 
-All promoted rules are output to a single unified skill file:
+All promoted rules are output using an **adaptive layering strategy**:
+
+| Strategy | Condition | Output |
+|----------|-----------|--------|
+| `inline` | rules ≤ `inline_threshold` (default 20) | All rules embedded in SKILL.md |
+| `index` | rules > `inline_threshold` | SKILL.md contains index table, details in `domains/*.md` |
 
 | Output File | Description |
 |------------|-------------|
-| `.agents/skills/self-evolve/SKILL.md` | Unified skill file discoverable by any agent |
+| `.agents/skills/self-evolve/SKILL.md` | Unified skill file (always present) |
+| `.agents/skills/self-evolve/catalog.json` | Structured rule catalog (index strategy) |
+| `.agents/skills/self-evolve/domains/*.md` | Per-domain detail files (index strategy) |
+| `.agents/skills/self-evolve/find_rules.py` | Zero-dependency local search script (always synced) |
 
 Any agent that supports `.agents/skills/` skill discovery (Cursor, Copilot, Codex, etc.) can automatically find and use this skill file. No per-agent configuration is needed.
 
@@ -110,6 +136,9 @@ Config file: `<project-root>/.agents/self-evolve/config.jsonc`
   "min_task_count": 2,
   "auto_promote": false
 }
+
+  "auto_promote": false
+}
 ```
 
 | Field | Description | Default |
@@ -118,6 +147,7 @@ Config file: `<project-root>/.agents/self-evolve/config.jsonc`
 | `promotion_window_days` | Time window for promotion eligibility | `30` |
 | `min_task_count` | Minimum distinct tasks for promotion | `2` |
 | `auto_promote` | Auto-promote eligible entries in evolve | `false` |
+| `inline_threshold` | Max rules for inline strategy (above switches to index) | `20` |
 
 ## Data Storage
 
@@ -132,7 +162,10 @@ Config file: `<project-root>/.agents/self-evolve/config.jsonc`
 │   │   └── rules.jsonc           # Promoted rules
 │   └── skills/
 │       └── self-evolve/
-│           └── SKILL.md          # Unified skill file (auto-generated)
+│           ├── SKILL.md          # Unified skill file (auto-generated)
+│           ├── catalog.json      # Rule catalog (index strategy)
+│           ├── find_rules.py     # Local search script
+│           └── domains/          # Per-domain detail files (index strategy)
 ```
 
 ## Language Support

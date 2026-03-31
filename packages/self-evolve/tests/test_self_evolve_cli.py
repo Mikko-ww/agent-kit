@@ -140,6 +140,19 @@ class TestCapture:
         assert result.exit_code == 0
         assert "L-" in result.output
 
+    def test_capture_with_tags(self, tmp_path: Path):
+        setup_project(tmp_path)
+        io = FakeIO()
+        app = build_app(tmp_path, io)
+        result = runner.invoke(app, [
+            "capture",
+            "--summary", "Tagged learning",
+            "--domain", "debugging",
+            "--tags", "env,startup",
+        ])
+        assert result.exit_code == 0
+        assert "L-" in result.output
+
     def test_capture_warns_when_not_initialized(self, tmp_path: Path):
         io = FakeIO()
         app = build_app(tmp_path, io)
@@ -348,6 +361,104 @@ class TestStatus:
         result = runner.invoke(app, ["status"])
         assert result.exit_code == 0
         assert "0" in result.output
+
+
+class TestSearch:
+    def test_search_shows_stats_by_default(self, tmp_path: Path):
+        setup_project(tmp_path)
+
+        storage = require_module("self_evolve.storage")
+        models = require_module("self_evolve.models")
+        rules = [
+            models.PromotedRule(
+                id="R-001",
+                source_learning_id="L-001",
+                rule="Validate inputs",
+                domain="security",
+                created_at="2026-03-30T12:00:00Z",
+                tags=["validation"],
+                title="输入校验",
+            ),
+        ]
+        storage.save_rules(tmp_path, rules)
+
+        # 先 sync 生成 catalog.json
+        io = FakeIO()
+        app = build_app(tmp_path, io)
+        runner.invoke(app, ["sync"])
+
+        result = runner.invoke(app, ["search"])
+        assert result.exit_code == 0
+        assert "1" in result.output
+
+    def test_search_by_domain(self, tmp_path: Path):
+        setup_project(tmp_path)
+
+        storage = require_module("self_evolve.storage")
+        models = require_module("self_evolve.models")
+        rules = [
+            models.PromotedRule(
+                id="R-001",
+                source_learning_id="L-001",
+                rule="Validate inputs",
+                domain="security",
+                created_at="2026-03-30T12:00:00Z",
+                tags=["validation"],
+                title="输入校验",
+            ),
+            models.PromotedRule(
+                id="R-002",
+                source_learning_id="L-002",
+                rule="Log errors",
+                domain="debugging",
+                created_at="2026-03-30T12:00:00Z",
+            ),
+        ]
+        storage.save_rules(tmp_path, rules)
+
+        io = FakeIO()
+        app = build_app(tmp_path, io)
+        runner.invoke(app, ["sync"])
+
+        result = runner.invoke(app, ["search", "--domain", "security"])
+        assert result.exit_code == 0
+        assert "R-001" in result.output
+        assert "R-002" not in result.output
+
+    def test_search_by_keyword(self, tmp_path: Path):
+        setup_project(tmp_path)
+
+        storage = require_module("self_evolve.storage")
+        models = require_module("self_evolve.models")
+        rules = [
+            models.PromotedRule(
+                id="R-001",
+                source_learning_id="L-001",
+                rule="Validate inputs",
+                domain="security",
+                created_at="2026-03-30T12:00:00Z",
+                title="输入校验",
+            ),
+        ]
+        storage.save_rules(tmp_path, rules)
+
+        io = FakeIO()
+        app = build_app(tmp_path, io)
+        runner.invoke(app, ["sync"])
+
+        result = runner.invoke(app, ["search", "--keyword", "Validate"])
+        assert result.exit_code == 0
+        assert "R-001" in result.output
+
+    def test_search_no_results(self, tmp_path: Path):
+        setup_project(tmp_path)
+
+        io = FakeIO()
+        app = build_app(tmp_path, io)
+        runner.invoke(app, ["sync"])
+
+        result = runner.invoke(app, ["search", "--domain", "nonexistent"])
+        assert result.exit_code == 0
 
 
 class TestHelp:

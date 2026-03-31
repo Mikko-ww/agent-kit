@@ -18,6 +18,7 @@
 - `agent-kit self-evolve sync`
 - `agent-kit self-evolve evolve`
 - `agent-kit self-evolve status`
+- `agent-kit self-evolve search`
 
 对应实现入口：
 
@@ -39,6 +40,7 @@
 - `promotion_window_days`
 - `min_task_count`
 - `auto_promote`
+- `inline_threshold`：自适应策略阈值（默认 20），≤ 阈值时内联全部规则，> 阈值时生成索引+分域文件
 
 配置读写实现：
 
@@ -62,11 +64,19 @@
 
 ## 5. Agent Skill 同步
 
-同步模块将推广规则输出为统一的 Skill 文件，供所有 Agent 通过技能发现机制调用：
+同步模块采用**自适应分层策略**将推广规则输出为 Skill 文件，供所有 Agent 通过技能发现机制调用：
 
-- **统一 Skill 输出**: `.agents/skills/self-evolve/SKILL.md`
+- **inline 策略**（规则数 ≤ `inline_threshold`）：所有规则内联到 `SKILL.md`
+- **index 策略**（规则数 > `inline_threshold`）：`SKILL.md` 仅包含规则索引表，详细内容拆分到 `domains/*.md` 分域文件
 
-任何支持 `.agents/skills/` 技能发现的 Agent（Cursor、Copilot、Codex 等）均可自动发现并使用此 Skill 文件。
+输出文件：
+
+- `.agents/skills/self-evolve/SKILL.md`：统一 Skill 文件（必有）
+- `.agents/skills/self-evolve/catalog.json`：结构化规则目录（index 策略时生成）
+- `.agents/skills/self-evolve/domains/*.md`：分域详细规则（index 策略时生成）
+- `.agents/skills/self-evolve/find_rules.py`：零依赖本地搜索脚本（始终同步）
+
+模板文件位于 [src/self_evolve/templates/](src/self_evolve/templates/)，搜索脚本位于 [src/self_evolve/scripts/](src/self_evolve/scripts/)。
 
 同步实现：
 
@@ -79,8 +89,11 @@
 - **学习条目**（Learning Entry）：结构化的经验记录。
 - **模式识别**（Pattern Detection）：通过 `pattern_key` 精确匹配，关联相似条目。
 - **推广**（Promotion）：满足门槛条件后提炼为永久规则。
-- **同步**（Sync）：将推广规则输出为统一的 `.agents/skills/self-evolve/SKILL.md` 文件。
+- **同步**（Sync）：将推广规则输出为统一的 `.agents/skills/self-evolve/SKILL.md` 文件，采用自适应分层策略。
+- **搜索**（Search）：按领域、标签或关键词搜索已推广规则。
 - **一键进化**（Evolve）：自动完成 analyze → promote → sync 完整循环。
+- **标签**（Tags）：学习条目和推广规则支持 `tags` 标签列表，推广时自动聚合来源条目的标签。
+- **自适应策略**：根据规则数量自动选择 inline 或 index 策略，类似图书馆找书逻辑（分类 → 标签 → 标题 → 目录 → 线索）。
 
 ## 7. 业务规则
 
@@ -90,6 +103,9 @@
 - 模式识别采用 `pattern_key` 精确匹配。
 - 推广条件须同时满足：`recurrence_count >= threshold`、`len(task_ids) >= min_task_count`。
 - 同步输出为 `.agents/skills/self-evolve/SKILL.md` 独占文件，每次同步完整覆写。
+- `capture` 支持 `--tags` 参数为学习条目附加标签。
+- `search` 命令支持 `--domain`、`--tag`、`--keyword`、`--stats`、`--detail` 组合查询。
+- 同步策略由 `inline_threshold` 配置控制，也可通过 `sync --strategy` 手动指定。
 
 ## 8. 修改本插件时重点验证
 
@@ -98,7 +114,9 @@
 - `list` 是否正确按状态/领域/优先级过滤
 - `analyze` 是否正确识别模式、关联条目、递增计数
 - `promote` 是否正确检查推广条件并生成规则
-- `sync` 是否正确生成 `.agents/skills/self-evolve/SKILL.md`
+- `sync` 是否正确生成 `.agents/skills/self-evolve/SKILL.md`（含 YAML frontmatter）
+- `sync` 在不同策略（inline/index）下是否正确生成对应文件
+- `search` 是否正确按领域、标签、关键词过滤
 - `evolve` 是否正确执行完整进化循环
 - `status` 是否正确统计各维度数据
 - 中英文下的 `--help`、warning/error、状态输出是否保持一致

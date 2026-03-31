@@ -84,6 +84,7 @@ def capture_learning(
     suggested_action: str = "",
     pattern_key: str = "",
     task_id: str = "",
+    tags: list[str] | None = None,
 ) -> LearningEntry:
     existing_ids = list_learning_ids(project_root)
     learning_id = generate_learning_id(existing_ids)
@@ -104,6 +105,7 @@ def capture_learning(
         see_also=[],
         recurrence_count=1,
         task_ids=task_ids,
+        tags=tags or [],
     )
 
     save_learning(project_root, entry)
@@ -190,6 +192,9 @@ def promote_learning(
     if entry is None:
         return None
 
+    # 聚合关联条目的 tags
+    aggregated_tags = _aggregate_tags(project_root, entry)
+
     rules = load_rules(project_root)
     existing_rule_ids = [r.id for r in rules]
     rule_id = generate_rule_id(existing_rule_ids)
@@ -201,6 +206,8 @@ def promote_learning(
         rule=rule_text,
         domain=entry.domain,
         created_at=now,
+        tags=aggregated_tags,
+        title=entry.summary,
     )
 
     rules.append(rule)
@@ -221,7 +228,7 @@ def sync_rules(
 ) -> SyncResult:
     """将所有推广规则同步到统一的 Skill 文件。"""
     rules = load_rules(project_root)
-    return sync_skill(project_root, rules)
+    return sync_skill(project_root, rules, inline_threshold=config.inline_threshold)
 
 
 # ── 一键进化 ──────────────────────────────────────────────────────
@@ -297,3 +304,14 @@ def _cross_link(entries: list[LearningEntry], project_root: Path) -> None:
     if changed:
         for entry in entries:
             save_learning(project_root, entry)
+
+
+def _aggregate_tags(project_root: Path, entry: LearningEntry) -> list[str]:
+    """从关联的同 pattern_key 条目中聚合 tags。"""
+    tags = set(entry.tags)
+    if entry.pattern_key:
+        all_entries = list_learnings(project_root)
+        for e in all_entries:
+            if e.pattern_key == entry.pattern_key:
+                tags.update(e.tags)
+    return sorted(tags)

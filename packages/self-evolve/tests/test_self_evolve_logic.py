@@ -118,9 +118,11 @@ class TestModels:
 
     def test_generate_learning_id_increments(self):
         models = require_module("self_evolve.models")
-        existing = ["L-20260330-001", "L-20260330-002"]
+        from datetime import datetime, timezone
+        today = datetime.now(timezone.utc).strftime("%Y%m%d")
+        existing = [f"L-{today}-001", f"L-{today}-002"]
         new_id = models.generate_learning_id(existing)
-        assert new_id.endswith("-003")
+        assert new_id == f"L-{today}-003"
 
     def test_generate_learning_id_starts_at_001(self):
         models = require_module("self_evolve.models")
@@ -141,11 +143,15 @@ class TestModels:
             rule="Always validate env vars",
             domain="debugging",
             created_at="2026-03-30T12:00:00Z",
+            tags=["env", "validation"],
+            title="环境变量校验",
         )
         data = rule.to_dict()
         restored = models.PromotedRule.from_dict(data)
         assert restored.id == rule.id
         assert restored.rule == rule.rule
+        assert restored.tags == ["env", "validation"]
+        assert restored.title == "环境变量校验"
 
 
 class TestStorage:
@@ -249,8 +255,9 @@ class TestSync:
         result = sync_module.sync_skill(tmp_path, rules)
         assert result.path.exists()
         assert result.path.name == "SKILL.md"
+        assert result.strategy == "inline"
         content = result.path.read_text(encoding="utf-8")
-        assert "Self-Evolved Project Rules" in content
+        assert "项目自进化规则" in content
         assert "Always validate env vars" in content
         assert "agent-kit self-evolve" in content
 
@@ -267,7 +274,7 @@ class TestSync:
         result = sync_module.sync_skill(tmp_path, [])
         assert result.rules_count == 0
         content = result.path.read_text(encoding="utf-8")
-        assert "Self-Evolved Project Rules" in content
+        assert "项目自进化规则" in content
 
     def test_sync_skill_overwrites_existing(self, tmp_path: Path):
         sync_module = require_module("self_evolve.sync")
@@ -299,6 +306,62 @@ class TestSync:
         content = result.path.read_text(encoding="utf-8")
         assert "Updated rule" in content
         assert "Old rule" not in content
+
+    def test_sync_generates_catalog_json(self, tmp_path: Path):
+        sync_module = require_module("self_evolve.sync")
+        models = require_module("self_evolve.models")
+        import json
+
+        rules = [
+            models.PromotedRule(
+                id="R-001",
+                source_learning_id="L-001",
+                rule="Validate inputs",
+                domain="security",
+                created_at="2026-03-30T12:00:00Z",
+                tags=["validation"],
+                title="输入校验",
+            ),
+        ]
+        result = sync_module.sync_skill(tmp_path, rules)
+        assert result.catalog_path is not None
+        assert result.catalog_path.exists()
+
+        catalog = json.loads(result.catalog_path.read_text(encoding="utf-8"))
+        assert catalog["summary"]["total_rules"] == 1
+        assert len(catalog["rules"]) == 1
+        assert catalog["rules"][0]["id"] == "R-001"
+        assert catalog["rules"][0]["tags"] == ["validation"]
+
+    def test_sync_generates_scripts(self, tmp_path: Path):
+        sync_module = require_module("self_evolve.sync")
+        result = sync_module.sync_skill(tmp_path, [])
+        assert result.script_path is not None
+        assert result.script_path.exists()
+        assert result.script_path.name == "find_rules.py"
+
+    def test_sync_index_strategy_for_many_rules(self, tmp_path: Path):
+        sync_module = require_module("self_evolve.sync")
+        models = require_module("self_evolve.models")
+
+        rules = [
+            models.PromotedRule(
+                id=f"R-{i:03d}",
+                source_learning_id=f"L-{i:03d}",
+                rule=f"Rule {i}",
+                domain="debugging" if i % 2 == 0 else "testing",
+                created_at="2026-03-30T12:00:00Z",
+            )
+            for i in range(1, 26)  # 25 条，超过默认阈值 20
+        ]
+        result = sync_module.sync_skill(tmp_path, rules, inline_threshold=20)
+        assert result.strategy == "index"
+        assert len(result.domain_files) == 2  # debugging + testing
+
+        # 验证域文件存在
+        domains_dir = tmp_path / ".agents" / "skills" / "self-evolve" / "domains"
+        assert (domains_dir / "debugging.md").exists()
+        assert (domains_dir / "testing.md").exists()
 
 
 class TestLogic:
@@ -528,6 +591,55 @@ class TestLogic:
         assert skill_file.exists()
         content = skill_file.read_text(encoding="utf-8")
         assert "Check env vars" in content
+
+    def test_capture_learning_with_tags(self, tmp_path: Path):
+        logic = require_module("self_evolve.logic")
+        entry = logic.capture_learning(
+            tmp_path,
+            summary="Tagged learning",
+            domain="testing",
+            tags=["ci", "pipeline"],
+        )
+        assert entry.tags == ["ci", "pipeline"]
+
+    def test_promote_learning_aggregates_tags(self, tmp_path: Path):
+        logic = require_module("self_evolve.logic")
+        storage = require_module("self_evolve.storage")
+        models = require_module("self_evolve.models")
+
+        e1 = models.LearningEntry(
+            id="L-20260330-010",
+            timestamp="2026-03-30T12:00:00Z",
+            priority="high",
+            status="active",
+            domain="debugging",
+            summary="Tag test",
+            pattern_key="tag-test",
+            recurrence_count=5,
+            task_ids=["t1", "t2", "t3"],
+            tags=["env", "startup"],
+        )
+        e2 = models.LearningEntry(
+            id="L-20260330-011",
+            timestamp="2026-03-30T12:01:00Z",
+            priority="high",
+            status="active",
+            domain="debugging",
+            summary="Tag test 2",
+            pattern_key="tag-test",
+            recurrence_count=5,
+            task_ids=["t1", "t2", "t3"],
+            tags=["validation", "env"],
+        )
+        storage.save_learning(tmp_path, e1)
+        storage.save_learning(tmp_path, e2)
+
+        rule = logic.promote_learning(tmp_path, "L-20260330-010", "Validate env at startup")
+        assert rule is not None
+        assert "env" in rule.tags
+        assert "startup" in rule.tags
+        assert "validation" in rule.tags
+        assert rule.title == "Tag test"
 
     def test_get_evolution_status(self, tmp_path: Path):
         logic = require_module("self_evolve.logic")

@@ -182,11 +182,14 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
         action: str = typer.Option("", "--action", help=_t(language, "option.action")),
         pattern_key: str = typer.Option("", "--pattern-key", help=_t(language, "option.pattern_key")),
         task_id: str = typer.Option("", "--task-id", help=_t(language, "option.task_id")),
+        tags: str = typer.Option("", "--tags", help=_t(language, "option.tags")),
     ) -> None:
         runtime = runtime_factory()
         project_root = _require_project(runtime)
         if project_root is None:
             return
+
+        tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
 
         entry = capture_learning(
             project_root,
@@ -197,6 +200,7 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
             suggested_action=action,
             pattern_key=pattern_key,
             task_id=task_id,
+            tags=tag_list,
         )
         runtime.io.echo(_tr(runtime, "saved.learning", id=entry.id))
 
@@ -290,7 +294,7 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
             runtime.io.echo(_tr(runtime, "sync.no_rules"))
             return
 
-        runtime.io.echo(_tr(runtime, "sync.completed", count=result.rules_count, path=str(result.path)))
+        runtime.io.echo(_tr(runtime, "sync.completed", count=result.rules_count, path=str(result.path), strategy=result.strategy))
 
     @app.command("evolve", help=_t(language, "evolve.help"))
     def evolve_command() -> None:
@@ -319,7 +323,7 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
 
         if result.sync_result:
             runtime.io.echo(
-                _tr(runtime, "sync.completed", count=result.sync_result.rules_count, path=str(result.sync_result.path))
+                _tr(runtime, "sync.completed", count=result.sync_result.rules_count, path=str(result.sync_result.path), strategy=result.sync_result.strategy)
             )
 
         runtime.io.echo(_tr(runtime, "evolve.completed"))
@@ -334,6 +338,57 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
         config = load_config(project_root)
         evo_status = get_evolution_status(project_root)
         _print_status(runtime, evo_status, config)
+
+    @app.command("search", help=_t(language, "search.help"))
+    def search_command(
+        domain: str | None = typer.Option(None, "--domain", help=_t(language, "option.search_domain")),
+        tag: str | None = typer.Option(None, "--tag", help=_t(language, "option.search_tag")),
+        keyword: str | None = typer.Option(None, "--keyword", help=_t(language, "option.search_keyword")),
+        stats: bool = typer.Option(False, "--stats", help=_t(language, "option.search_stats")),
+        detail: bool = typer.Option(False, "--detail", help=_t(language, "option.search_detail")),
+    ) -> None:
+        runtime = runtime_factory()
+        project_root = _require_project(runtime)
+        if project_root is None:
+            return
+
+        from self_evolve.sync import _load_catalog
+
+        catalog = _load_catalog(project_root)
+        if catalog is None:
+            runtime.io.warn(_tr(runtime, "search.no_catalog"))
+            return
+
+        if stats:
+            _print_search_stats(runtime, catalog)
+            return
+
+        if not domain and not tag and not keyword:
+            _print_search_stats(runtime, catalog)
+            return
+
+        results = _search_catalog(catalog, domain=domain, tag=tag, keyword=keyword)
+        if not results:
+            runtime.io.warn(_tr(runtime, "search.no_results"))
+            return
+
+        runtime.io.echo(_tr(runtime, "search.found", count=len(results)))
+        for rule in results:
+            title = rule.get("title", rule.get("summary", ""))
+            runtime.io.echo(_tr(runtime, "search.rule_line", domain=rule.get("domain", ""), id=rule.get("id", ""), title=title))
+            if detail:
+                tags_str = ", ".join(rule.get("tags", []))
+                if tags_str:
+                    runtime.io.echo(_tr(runtime, "search.rule_tags", tags=tags_str))
+                summary = rule.get("summary", "")
+                if summary:
+                    runtime.io.echo(_tr(runtime, "search.rule_summary", summary=summary))
+                source = ", ".join(rule.get("source_entries", []))
+                if source:
+                    runtime.io.echo(_tr(runtime, "search.rule_source", source=source))
+                promoted_at = rule.get("promoted_at", "")
+                if promoted_at:
+                    runtime.io.echo(_tr(runtime, "search.rule_promoted_at", date=promoted_at))
 
     return app
 
@@ -419,3 +474,38 @@ def _print_status(
     runtime.io.echo(_tr(runtime, "status.rules", count=status.total_rules))
     if status.active_domains:
         runtime.io.echo(_tr(runtime, "status.domains", domains=", ".join(status.active_domains)))
+
+
+def _print_search_stats(runtime: PluginRuntime, catalog: dict) -> None:
+    """输出域统计概览。"""
+    summary = catalog.get("summary", {})
+    domains = summary.get("domains", {})
+    total = summary.get("total_rules", 0)
+    runtime.io.echo(_tr(runtime, "search.stats_total", count=total))
+    for d, count in sorted(domains.items()):
+        runtime.io.echo(_tr(runtime, "search.stats_domain", domain=d, count=count))
+
+
+def _search_catalog(
+    catalog: dict,
+    *,
+    domain: str | None = None,
+    tag: str | None = None,
+    keyword: str | None = None,
+) -> list[dict]:
+    """按条件过滤 catalog 中的规则。"""
+    rules = catalog.get("rules", [])
+    results = []
+    for rule in rules:
+        if domain and rule.get("domain", "") != domain:
+            continue
+        if tag and tag not in rule.get("tags", []):
+            continue
+        if keyword:
+            kw = keyword.lower()
+            title = rule.get("title", "").lower()
+            summary = rule.get("summary", "").lower()
+            if kw not in title and kw not in summary:
+                continue
+        results.append(rule)
+    return results

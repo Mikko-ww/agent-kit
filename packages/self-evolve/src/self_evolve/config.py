@@ -16,6 +16,7 @@ class SelfEvolveConfig:
     promotion_window_days: int = 30
     min_task_count: int = 2
     auto_promote: bool = False
+    inline_threshold: int = 20
 
 
 def evolve_dir(project_root: Path) -> Path:
@@ -62,6 +63,7 @@ def load_config(project_root: Path) -> SelfEvolveConfig | None:
         promotion_window_days=int(data.get("promotion_window_days", 30)),
         min_task_count=int(data.get("min_task_count", 2)),
         auto_promote=bool(data.get("auto_promote", False)),
+        inline_threshold=int(data.get("inline_threshold", 20)),
     )
 
 
@@ -75,5 +77,6 @@ def save_config(project_root: Path, config: SelfEvolveConfig) -> Path:
             "promotion_window_days": config.promotion_window_days,
             "min_task_count": config.min_task_count,
             "auto_promote": config.auto_promote,
+            "inline_threshold": config.inline_threshold,
         },
     )

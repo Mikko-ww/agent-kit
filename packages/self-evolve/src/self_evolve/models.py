@@ -22,6 +22,7 @@ class LearningEntry:
     see_also: list[str] = field(default_factory=list)
     recurrence_count: int = 1
     task_ids: list[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
     metadata: dict[str, object] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, object]:
@@ -38,6 +39,7 @@ class LearningEntry:
             "see_also": list(self.see_also),
             "recurrence_count": self.recurrence_count,
             "task_ids": list(self.task_ids),
+            "tags": list(self.tags),
             "metadata": dict(self.metadata),
         }
 
@@ -56,6 +58,7 @@ class LearningEntry:
             see_also=list(data.get("see_also", [])),  # type: ignore[arg-type]
             recurrence_count=int(data.get("recurrence_count", 1)),  # type: ignore[arg-type]
             task_ids=list(data.get("task_ids", [])),  # type: ignore[arg-type]
+            tags=list(data.get("tags", [])),  # type: ignore[arg-type]
             metadata=dict(data.get("metadata", {})),  # type: ignore[arg-type]
         )
 
@@ -67,14 +70,18 @@ class PromotedRule:
     rule: str
     domain: str
     created_at: str
+    tags: list[str] = field(default_factory=list)
+    title: str = ""
 
-    def to_dict(self) -> dict[str, str]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "id": self.id,
             "source_learning_id": self.source_learning_id,
             "rule": self.rule,
             "domain": self.domain,
             "created_at": self.created_at,
+            "tags": list(self.tags),
+            "title": self.title,
         }
 
     @classmethod
@@ -85,6 +92,8 @@ class PromotedRule:
             rule=str(data.get("rule", "")),
             domain=str(data.get("domain", "")),
             created_at=str(data.get("created_at", "")),
+            tags=list(data.get("tags", [])),  # type: ignore[arg-type]
+            title=str(data.get("title", "")),
         )
 
 
