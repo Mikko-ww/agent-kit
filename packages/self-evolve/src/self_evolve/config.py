@@ -6,7 +6,7 @@ from pathlib import Path
 from self_evolve import CONFIG_VERSION, PLUGIN_ID
 from self_evolve.jsonc import load_jsonc, write_jsonc
 
-AGENT_DIR_NAME = ".agent"
+AGENT_DIR_NAME = ".agents"
 MEMORIES_DIR_NAME = "memories"
 SKILLS_DIR_NAME = "skills"
 

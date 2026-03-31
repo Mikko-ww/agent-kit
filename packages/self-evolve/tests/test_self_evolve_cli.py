@@ -44,9 +44,9 @@ def test_init_creates_agent_dir(tmp_path: Path):
     result = runner.invoke(app, ["init"])
 
     assert result.exit_code == 0
-    assert ".agent" in result.output
-    assert (tmp_path / ".agent" / "memories").is_dir()
-    assert (tmp_path / ".agent" / "skills" / "self-evolve" / "SKILL.md").is_file()
+    assert ".agents" in result.output
+    assert (tmp_path / ".agents" / "memories").is_dir()
+    assert (tmp_path / ".agents" / "skills" / "self-evolve" / "SKILL.md").is_file()
 
 
 def test_init_skips_when_already_initialized(tmp_path: Path):
@@ -222,4 +222,4 @@ def test_help_uses_zh_cn(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     assert root_help.exit_code == 0
     assert "项目级自我进化工具。" in root_help.output
     assert skill_help.exit_code == 0
-    assert "管理 .agent 目录中的技能。" in skill_help.output
+    assert "管理 .agents 目录中的技能。" in skill_help.output

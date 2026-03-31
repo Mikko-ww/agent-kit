@@ -4,7 +4,7 @@
 
 ## 1. 插件目标
 
-`self-evolve` 负责在项目根目录的 `.agent/` 目录中统一管理自我进化数据，包括记忆（规则、模式、学习记录）和技能描述，不区分智能体类型，适配所有智能体。
+`self-evolve` 负责在项目根目录的 `.agents/` 目录中统一管理自我进化数据，包括记忆（规则、模式、学习记录）和技能描述，不区分智能体类型，适配所有智能体。
 
 ## 2. 命令
 
@@ -41,7 +41,7 @@ core 侧当前还提供固定短名 alias：
 
 ### 项目级配置
 
-位置：`<project_root>/.agent/config.jsonc`
+位置：`<project_root>/.agents/config.jsonc`
 
 字段：
 - `plugin_id`
@@ -51,10 +51,10 @@ core 侧当前还提供固定短名 alias：
 
 ## 4. 数据存储
 
-所有数据统一存储在项目根目录的 `.agent/` 目录中：
+所有数据统一存储在项目根目录的 `.agents/` 目录中：
 
 ```
-.agent/
+.agents/
 ├── config.jsonc           # 项目级配置
 ├── memories/              # 记忆存储（JSONC 格式）
 │   ├── m-001.jsonc
@@ -66,11 +66,11 @@ core 侧当前还提供固定短名 alias：
 
 ## 5. 业务规则
 
-- 初始化时自动生成 `.agent/skills/self-evolve/SKILL.md` 技能描述文件。
+- 初始化时自动生成 `.agents/skills/self-evolve/SKILL.md` 技能描述文件。
 - 记忆分三类：`rule`（规则）、`pattern`（模式）、`learning`（学习记录）。
 - 记忆 ID 从 `m-001` 开始自增。
-- 技能发现扫描 `.agent/skills/` 下所有包含 `SKILL.md` 的子目录。
-- 用户可在 `.agent/skills/` 下手动添加自定义技能。
+- 技能发现扫描 `.agents/skills/` 下所有包含 `SKILL.md` 的子目录。
+- 用户可在 `.agents/skills/` 下手动添加自定义技能。
 - 不区分智能体类型，所有数据对所有智能体通用。
 - 当前仅支持 macOS / Linux。
 
@@ -78,7 +78,7 @@ core 侧当前还提供固定短名 alias：
 
 ## 6. 修改本插件时重点验证
 
-- `init` 是否正确创建 `.agent/` 目录结构和技能描述文件
+- `init` 是否正确创建 `.agents/` 目录结构和技能描述文件
 - `capture` 是否正确写入记忆文件并自增 ID
 - `list` 是否支持全部列出和按类别筛选
 - `show` 是否正确展示记忆详情

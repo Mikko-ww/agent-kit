@@ -86,8 +86,8 @@ def validate_category(category: str) -> None:
 
 
 def init_agent_dir(project_root: Path) -> Path:
-    """初始化 .agent 目录结构，返回 .agent 目录路径。"""
-    agent_dir = project_root / ".agent"
+    """初始化 .agents 目录结构，返回 .agents 目录路径。"""
+    agent_dir = project_root / ".agents"
     agent_dir.mkdir(parents=True, exist_ok=True)
     (agent_dir / "memories").mkdir(exist_ok=True)
     (agent_dir / "skills").mkdir(exist_ok=True)
@@ -99,7 +99,7 @@ def init_agent_dir(project_root: Path) -> Path:
 
 
 def is_initialized(project_root: Path) -> bool:
-    agent_dir = project_root / ".agent"
+    agent_dir = project_root / ".agents"
     return agent_dir.exists() and agent_dir.is_dir()
 
 

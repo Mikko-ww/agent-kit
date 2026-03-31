@@ -13,7 +13,7 @@ def test_init_creates_agent_directory_structure(tmp_path: Path):
     agent_dir = init_agent_dir(tmp_path)
 
     assert is_initialized(tmp_path)
-    assert agent_dir == tmp_path / ".agent"
+    assert agent_dir == tmp_path / ".agents"
     assert (agent_dir / "memories").is_dir()
     assert (agent_dir / "skills").is_dir()
     assert (agent_dir / "skills" / "self-evolve" / "SKILL.md").is_file()

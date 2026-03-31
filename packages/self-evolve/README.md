@@ -4,7 +4,7 @@
 
 ## 核心特性
 
-- **统一存储**：所有数据存储在项目根目录的 `.agent/` 目录中，不区分智能体类型
+- **统一存储**：所有数据存储在项目根目录的 `.agents/` 目录中，不区分智能体类型
 - **技能集成**：初始化后自动生成技能描述文件，智能体可以技能方式发现和使用
 - **记忆管理**：支持捕获、查询规则（rule）、模式（pattern）和学习记录（learning）
 - **CLI 命令**：用户可通过命令行手动管理记忆和技能
@@ -40,12 +40,12 @@ agent-kit self-evolve skill list
 agent-kit self-evolve skill show self-evolve
 ```
 
-## `.agent/` 目录结构
+## `.agents/` 目录结构
 
 初始化后，项目根目录会生成以下结构：
 
 ```
-.agent/
+.agents/
 ├── config.jsonc           # 项目级配置
 ├── memories/              # 记忆存储
 │   ├── m-001.jsonc
@@ -65,7 +65,7 @@ agent-kit self-evolve skill show self-evolve
 
 ## 技能集成
 
-初始化后，`.agent/skills/self-evolve/SKILL.md` 会被自动生成。智能体可以通过发现该文件了解如何使用自我进化系统：
+初始化后，`.agents/skills/self-evolve/SKILL.md` 会被自动生成。智能体可以通过发现该文件了解如何使用自我进化系统：
 
 - 在任务开始前查阅已有规则和模式
 - 在工作中发现值得记录的内容时自动捕获
