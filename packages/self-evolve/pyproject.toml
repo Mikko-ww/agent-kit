@@ -1,7 +1,7 @@
 [project]
-name = "skills-link"
-version = "0.2.2"
-description = "Skill linking toolkit for agent-kit."
+name = "self-evolve"
+version = "0.3.0"
+description = "Self-evolving agent skill toolkit for agent-kit."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -10,7 +10,7 @@ dependencies = [
 ]
 
 [project.scripts]
-agent-kit-plugin = "skills_link.plugin_cli:main"
+agent-kit-plugin = "self_evolve.plugin_cli:main"
 
 [build-system]
 requires = ["hatchling>=1.27,<2.0"]

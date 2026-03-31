@@ -11,6 +11,7 @@
 当前插件对外提供以下命令：
 
 - `agent-kit skills-link init`
+- `agent-kit skills-link wizard`
 - `agent-kit skills-link list`
 - `agent-kit skills-link link`
 - `agent-kit skills-link unlink`
@@ -57,6 +58,7 @@ core 侧当前还提供固定短名 alias：
 - 只识别 `source_dir` 下一层直接子目录中包含 `SKILL.md` 的目录。
 - 只按目录粒度处理 skill，不做文件级选择。
 - `link` / `unlink` / `list` / `status` 默认作用全部 target，可用 `--target <name>` 缩小范围。
+- `wizard` 是交互式配置入口：未配置时负责首次初始化，已配置时可更新 `source_dir`、新增/更新/移除 target，或查看当前状态。
 - `link` 只创建目录软链接，不复制文件。
 - 若目标位置已存在同名文件、目录或不受管链接，一律视为冲突，不覆盖。
 - `unlink` 只删除指向当前 `source_dir/<skill>` 的受管软链接，不删除真实目录或外部链接。
@@ -72,6 +74,7 @@ core 侧当前还提供固定短名 alias：
 ## 5. 修改本插件时重点验证
 
 - `init` 是否正确写入新的多 target `config.jsonc`
+- `wizard` 是否能在未配置时正确进入初始化流程，并在已配置时正确管理 `source_dir` 与 target
 - `target add/list/update/remove` 是否正确维护 target 注册表
 - `list` 是否按 skill 视角展示各 target 的 `linked`、`not_linked`、`broken_link`、`conflict`
 - `link` 是否按 `(skill, target)` 粒度创建受管软链接并正确报告冲突
