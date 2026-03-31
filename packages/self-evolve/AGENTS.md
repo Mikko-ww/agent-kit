@@ -42,6 +42,7 @@ session -> candidate -> rule -> skill sync
 
 - `plugin_id`
 - `config_version`
+- `language`
 - `auto_accept_enabled`
 - `auto_accept_min_confidence`
 - `inline_threshold`
@@ -49,6 +50,9 @@ session -> candidate -> rule -> skill sync
 固定约束：
 
 - `config_version` 当前为 `4`
+- `init` 时必须显式选择模板语言，并写入 `config.jsonc` 的 `language`
+- 模板语言决议顺序固定为：项目配置 `language` > `AGENT_KIT_LANG` > `en`
+- CLI 文案语言继续走 core 决议链，不能被项目模板语言字段覆盖
 - 旧字段 `promotion_threshold`、`promotion_window_days`、`min_task_count`、`auto_promote` 已废弃
 - 检测到旧配置或旧数据布局时必须直接报错，不得隐式迁移
 
@@ -91,15 +95,16 @@ Skill 输出目录固定为：
 - 不同步 `candidate`
 - 不同步 `session`
 - 继续保留 `inline/index` 双策略
+- `SKILL.md`、索引页和 domain 详情页必须按模板语言生成，并与项目配置保持同步
 
 ## 7. 修改本插件时重点验证
 
-- `init` 是否正确创建 v4 目录布局与空 Skill 输出
+- `init` 是否正确创建 v4 目录布局、提示选择模板语言并写入配置
 - `session record` 是否正确写入结构化 session
 - `detect run` 是否只处理未处理 session，并正确生成或合并 candidate
 - `candidate accept/reject/edit` 是否正确刷新索引与状态
 - `rule add/edit/retire` 是否正确影响 active rule 集合
-- `sync` 是否只消费 active rule，并生成正确的 `catalog.json`
+- `sync` 是否只消费 active rule，并按配置语言生成正确的模板与 `catalog.json`
 - `find_rules.py` 是否能基于 v2 catalog 正常检索
 - 中英文 `--help`、warning/error、状态输出是否一致
 - 发现旧布局时是否直接报错且不做迁移

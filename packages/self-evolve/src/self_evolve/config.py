@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 
 from self_evolve import CONFIG_VERSION, PLUGIN_ID
 from self_evolve.jsonc import load_jsonc, write_jsonc
+from self_evolve.locale import normalize_language
 
 _EVOLVE_DIR = ".agents/self-evolve"
 _SKILL_DIR = ".agents/skills/self-evolve"
@@ -17,6 +19,7 @@ class LegacyLayoutError(RuntimeError):
 
 @dataclass(slots=True, frozen=True)
 class SelfEvolveConfig:
+    language: str | None = None
     auto_accept_enabled: bool = False
     auto_accept_min_confidence: float = 0.9
     inline_threshold: int = 20
@@ -84,6 +87,7 @@ def load_config(project_root: Path) -> SelfEvolveConfig | None:
         raise LegacyLayoutError("Legacy self-evolve config detected.")
 
     return SelfEvolveConfig(
+        language=normalize_language(_optional_str(data.get("language"))),
         auto_accept_enabled=bool(data.get("auto_accept_enabled", False)),
         auto_accept_min_confidence=float(data.get("auto_accept_min_confidence", 0.9)),
         inline_threshold=int(data.get("inline_threshold", 20)),
@@ -92,13 +96,31 @@ def load_config(project_root: Path) -> SelfEvolveConfig | None:
 
 def save_config(project_root: Path, config: SelfEvolveConfig) -> Path:
     ensure_no_legacy_layout(project_root)
-    return write_jsonc(
-        config_file_path(project_root),
-        {
-            "plugin_id": PLUGIN_ID,
-            "config_version": CONFIG_VERSION,
-            "auto_accept_enabled": config.auto_accept_enabled,
-            "auto_accept_min_confidence": config.auto_accept_min_confidence,
-            "inline_threshold": config.inline_threshold,
-        },
-    )
+    payload: dict[str, object] = {
+        "plugin_id": PLUGIN_ID,
+        "config_version": CONFIG_VERSION,
+        "auto_accept_enabled": config.auto_accept_enabled,
+        "auto_accept_min_confidence": config.auto_accept_min_confidence,
+        "inline_threshold": config.inline_threshold,
+    }
+    if config.language is not None:
+        payload["language"] = config.language
+    return write_jsonc(config_file_path(project_root), payload)
+
+
+def resolve_template_language(project_root: Path) -> str:
+    config = load_config(project_root)
+    if config is not None and config.language is not None:
+        return config.language
+
+    env_value = normalize_language(os.environ.get("AGENT_KIT_LANG"))
+    if env_value is not None:
+        return env_value
+
+    return "en"
+
+
+def _optional_str(value: object | None) -> str | None:
+    if value is None:
+        return None
+    return str(value)

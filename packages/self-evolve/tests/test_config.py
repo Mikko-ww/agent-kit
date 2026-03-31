@@ -22,6 +22,7 @@ from self_evolve.jsonc import write_jsonc
 
 def test_save_and_load_v4_config_round_trip(tmp_path: Path):
     config = SelfEvolveConfig(
+        language="zh-CN",
         auto_accept_enabled=True,
         auto_accept_min_confidence=0.95,
         inline_threshold=42,
@@ -31,6 +32,7 @@ def test_save_and_load_v4_config_round_trip(tmp_path: Path):
     loaded = load_config(tmp_path)
 
     assert loaded == config
+    assert '"language": "zh-CN"' in config_file_path(tmp_path).read_text(encoding="utf-8")
 
 
 def test_load_config_rejects_legacy_config_version(tmp_path: Path):
