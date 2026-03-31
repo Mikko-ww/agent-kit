@@ -6,6 +6,8 @@ from types import SimpleNamespace
 
 from typer.testing import CliRunner
 
+from self_evolve.config import load_config
+
 
 runner = CliRunner()
 
@@ -26,7 +28,7 @@ def build_app(tmp_path: Path):
 def test_init_creates_v4_layout_and_empty_skill(tmp_path: Path):
     app = build_app(tmp_path)
 
-    result = runner.invoke(app, ["init"])
+    result = runner.invoke(app, ["init"], input="zh-CN\n")
 
     assert result.exit_code == 0
     assert (tmp_path / ".agents" / "self-evolve" / "sessions").exists()
@@ -34,11 +36,22 @@ def test_init_creates_v4_layout_and_empty_skill(tmp_path: Path):
     assert (tmp_path / ".agents" / "self-evolve" / "rules").exists()
     assert (tmp_path / ".agents" / "self-evolve" / "indexes").exists()
     assert (tmp_path / ".agents" / "skills" / "self-evolve" / "SKILL.md").exists()
+    assert load_config(tmp_path).language == "zh-CN"
+
+
+def test_init_uses_agent_kit_lang_as_default_template_language(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("AGENT_KIT_LANG", "zh-CN")
+    app = build_app(tmp_path)
+
+    result = runner.invoke(app, ["init"], input="\n")
+
+    assert result.exit_code == 0
+    assert load_config(tmp_path).language == "zh-CN"
 
 
 def test_session_record_detect_and_status_flow(tmp_path: Path):
     app = build_app(tmp_path)
-    runner.invoke(app, ["init"])
+    runner.invoke(app, ["init"], input="en\n")
 
     result = runner.invoke(
         app,

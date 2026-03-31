@@ -6,13 +6,14 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+import click
 import typer
 
 from self_evolve import API_VERSION, CONFIG_VERSION, PLUGIN_ID, __version__
 from self_evolve.candidate_ops import accept_candidate, edit_candidate, filter_candidates, reject_candidate
 from self_evolve.config import LegacyLayoutError, SelfEvolveConfig, find_project_root, load_config
 from self_evolve.detector import run_detection
-from self_evolve.locale import resolve_language
+from self_evolve.locale import normalize_language, resolve_language
 from self_evolve.messages import translate
 from self_evolve.rule_ops import add_rule, edit_rule, filter_rules, retire_rule
 from self_evolve.session_ops import initialize_project, record_session
@@ -78,7 +79,8 @@ def build_app(runtime_factory=default_runtime_factory) -> typer.Typer:
             if existing_root is not None and load_config(existing_root) is not None:
                 typer.echo(_tr(runtime, "warning.already_initialized", path=str(existing_root)))
                 return
-            initialize_project(project_root, SelfEvolveConfig())
+            template_language = _prompt_template_language(runtime)
+            initialize_project(project_root, SelfEvolveConfig(language=template_language))
             sync_skill(project_root)
             typer.echo(_tr(runtime, "init.completed"))
         except LegacyLayoutError:
@@ -295,6 +297,20 @@ def main() -> None:
 
 def _runtime_language(runtime: PluginRuntime) -> str:
     return resolve_language(runtime.config_root)
+
+
+def _prompt_template_language(runtime: PluginRuntime) -> str:
+    default_language = normalize_language(os.environ.get("AGENT_KIT_LANG")) or "en"
+    selected = typer.prompt(
+        _tr(runtime, "init.language.prompt"),
+        default=default_language,
+        show_default=True,
+        type=click.Choice(["en", "zh-CN"], case_sensitive=False),
+    )
+    normalized = normalize_language(selected)
+    if normalized is None:
+        return default_language
+    return normalized
 
 
 def _t(language: str, key: str, **kwargs: object) -> str:

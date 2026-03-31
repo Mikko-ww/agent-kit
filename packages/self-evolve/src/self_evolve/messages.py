@@ -4,7 +4,8 @@ MESSAGES: dict[str, dict[str, str]] = {
     "en": {
         "app.help": "Project-level knowledge pipeline for sessions, candidates, rules, and synced skill output.",
         "metadata.help": "Print plugin metadata as JSON.",
-        "init.help": "Initialize self-evolve v4 for the current project.",
+        "init.help": "Initialize self-evolve v4 for the current project and choose template language.",
+        "init.language.prompt": "Template language",
         "session.app.help": "Record and inspect structured project sessions.",
         "session.record.help": "Record a structured session.",
         "detect.app.help": "Run candidate detection for recorded sessions.",
@@ -46,7 +47,8 @@ MESSAGES: dict[str, dict[str, str]] = {
     "zh-CN": {
         "app.help": "项目级知识流水线：管理 session、candidate、rule，并同步生成 Skill 输出。",
         "metadata.help": "以 JSON 输出插件元数据。",
-        "init.help": "为当前项目初始化 self-evolve v4。",
+        "init.help": "为当前项目初始化 self-evolve v4，并选择模板语言。",
+        "init.language.prompt": "模板语言",
         "session.app.help": "记录和查看结构化项目会话。",
         "session.record.help": "记录一条结构化 session。",
         "detect.app.help": "对已记录 session 运行候选检测。",

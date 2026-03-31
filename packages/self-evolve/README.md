@@ -30,6 +30,9 @@ cd your-project
 agent-kit self-evolve init
 ```
 
+`init` 会在创建项目知识库时询问一次模板语言，只允许选择 `en` 或 `zh-CN`。
+默认值取自 `AGENT_KIT_LANG`；确认后的语言会写入 `.agents/self-evolve/config.jsonc`，供后续 `sync` 和模板更新时复用。
+
 初始化后会创建：
 
 - `.agents/self-evolve/config.jsonc`
@@ -126,15 +129,23 @@ agent-kit self-evolve sync
 {
   "plugin_id": "self-evolve",
   "config_version": 4,
+  "language": "zh-CN",
   "auto_accept_enabled": false,
   "auto_accept_min_confidence": 0.9,
   "inline_threshold": 20
 }
 ```
 
+- `language`：项目模板语言。`init` 时由用户选择并写入配置；后续 `sync` 优先使用该值。
 - `auto_accept_enabled`：是否允许候选在检测阶段自动生效。
 - `auto_accept_min_confidence`：自动生效所需最低置信度。
 - `inline_threshold`：Skill 输出在 inline/index 策略之间切换的阈值。
+
+模板语言决议固定为：
+
+1. 项目配置中的 `language`
+2. `AGENT_KIT_LANG`
+3. `en`
 
 ## 数据布局
 
@@ -176,3 +187,4 @@ python .agents/skills/self-evolve/scripts/find_rules.py --detail --domain debugg
 - 旧版 `.agents/self-evolve/learnings/`、`.agents/self-evolve/rules.jsonc` 和旧 CLI 已全部废弃。
 - 发现旧布局时会直接报错，不提供自动迁移。
 - CLI 继续支持 `en` 与 `zh-CN`，语言决议顺序与 `agent-kit` core 保持一致。
+- Skill 模板语言与 CLI 语言解耦：CLI 继续跟随 core 决议链，生成模板则优先遵循项目配置中的 `language`。

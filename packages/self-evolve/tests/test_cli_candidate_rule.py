@@ -25,7 +25,7 @@ def build_app(tmp_path: Path):
 
 def test_candidate_accept_then_sync(tmp_path: Path):
     app = build_app(tmp_path)
-    runner.invoke(app, ["init"])
+    runner.invoke(app, ["init"], input="en\n")
     runner.invoke(
         app,
         [
@@ -58,7 +58,7 @@ def test_candidate_accept_then_sync(tmp_path: Path):
 
 def test_rule_add_and_retire(tmp_path: Path):
     app = build_app(tmp_path)
-    runner.invoke(app, ["init"])
+    runner.invoke(app, ["init"], input="en\n")
 
     added = runner.invoke(
         app,

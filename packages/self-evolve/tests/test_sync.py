@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 
 from self_evolve.models import KnowledgeRule
+from self_evolve.config import SelfEvolveConfig, config_file_path, save_config
+from self_evolve.jsonc import write_jsonc
 from self_evolve.storage import save_rule
 from self_evolve.sync import sync_skill
 
@@ -54,6 +56,68 @@ def test_sync_only_renders_active_rules(tmp_path: Path):
     assert catalog["version"] == 2
     assert len(catalog["rules"]) == 1
     assert catalog["rules"][0]["source_candidates"] == ["C-001"]
+
+
+def test_sync_uses_language_saved_in_project_config(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("AGENT_KIT_LANG", "en")
+    save_config(tmp_path, SelfEvolveConfig(language="zh-CN"))
+    save_rule(
+        tmp_path,
+        KnowledgeRule(
+            id="R-001",
+            created_at="2026-03-31T00:00:00+00:00",
+            status="active",
+            title="Validate env before boot",
+            statement="Validate required environment variables before booting the service.",
+            rationale="Prevents partial startup failure.",
+            domain="debugging",
+            tags=["env"],
+            source_session_ids=["S-001"],
+            source_candidate_ids=["C-001"],
+            revision_of="",
+        ),
+    )
+
+    result = sync_skill(tmp_path)
+
+    content = result.path.read_text(encoding="utf-8")
+    assert "# 项目知识规则" in content
+    assert "该文件由 `self-evolve` 生成" in content
+
+
+def test_sync_falls_back_to_agent_kit_lang_when_project_language_missing(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("AGENT_KIT_LANG", "zh-CN")
+    write_jsonc(
+        config_file_path(tmp_path),
+        {
+            "plugin_id": "self-evolve",
+            "config_version": 4,
+            "auto_accept_enabled": False,
+            "auto_accept_min_confidence": 0.9,
+            "inline_threshold": 20,
+        },
+    )
+    save_rule(
+        tmp_path,
+        KnowledgeRule(
+            id="R-001",
+            created_at="2026-03-31T00:00:00+00:00",
+            status="active",
+            title="Validate env before boot",
+            statement="Validate required environment variables before booting the service.",
+            rationale="Prevents partial startup failure.",
+            domain="debugging",
+            tags=["env"],
+            source_session_ids=["S-001"],
+            source_candidate_ids=["C-001"],
+            revision_of="",
+        ),
+    )
+
+    result = sync_skill(tmp_path)
+
+    content = result.path.read_text(encoding="utf-8")
+    assert "# 项目知识规则" in content
 
 
 def test_sync_uses_index_strategy_when_rules_exceed_threshold(tmp_path: Path):
