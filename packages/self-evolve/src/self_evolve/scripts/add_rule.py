@@ -30,6 +30,11 @@ def _next_rule_id(rules_dir: Path) -> str:
 
 
 def _build_fingerprint(domain: str, statement: str) -> str:
+    """构建规则指纹用于重复检测。
+
+    对于包含 Unicode 字符（如中文）的 statement，使用 re.UNICODE 标志确保正确处理。
+    如果标准化后为空（仅特殊字符的情况），则使用 MD5 哈希作为后备。
+    """
     normalized = re.sub(r"[^\w]+", "-", statement.lower(), flags=re.UNICODE).strip("-")
     if not normalized:
         normalized = hashlib.md5(statement.encode("utf-8")).hexdigest()[:16]
@@ -37,6 +42,11 @@ def _build_fingerprint(domain: str, statement: str) -> str:
 
 
 def _check_duplicate(rules_dir: Path, fingerprint: str) -> str | None:
+    """检查是否存在相同指纹的活动规则。
+
+    返回第一个匹配的活动规则 ID，如果没有重复则返回 None。
+    忽略损坏的 JSON 文件和非活动状态的规则。
+    """
     if not rules_dir.exists():
         return None
     for path in rules_dir.glob("R-*.json"):
@@ -61,6 +71,20 @@ def main() -> None:
     parser.add_argument("--tag", action="append", default=[])
     args = parser.parse_args()
 
+    # 验证必填字段不为空
+    if not args.title.strip():
+        print("Error: title cannot be empty", file=sys.stderr)
+        sys.exit(1)
+    if not args.statement.strip():
+        print("Error: statement cannot be empty", file=sys.stderr)
+        sys.exit(1)
+    if not args.rationale.strip():
+        print("Error: rationale cannot be empty", file=sys.stderr)
+        sys.exit(1)
+    if not args.domain.strip():
+        print("Error: domain cannot be empty", file=sys.stderr)
+        sys.exit(1)
+
     rules_dir = _resolve_rules_dir(Path(__file__).resolve().parent)
     rules_dir.mkdir(parents=True, exist_ok=True)
 
@@ -83,7 +107,11 @@ def main() -> None:
     }
 
     path = rules_dir / f"{rule_id}.json"
-    path.write_text(json.dumps(rule, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    try:
+        path.write_text(json.dumps(rule, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    except OSError as e:
+        print(f"Failed to write rule file {path}: {e}", file=sys.stderr)
+        sys.exit(1)
     print(f"Created rule: {rule_id} -> {path}")
 
 

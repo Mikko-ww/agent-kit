@@ -146,3 +146,122 @@ def test_edit_rule_corrupt_json(tmp_path: Path):
     )
     assert result.returncode != 0
     assert "Failed" in result.stderr
+
+
+def test_add_rule_empty_title(tmp_path: Path):
+    """add_rule 应拒绝空标题。"""
+    scripts_dir = _setup_scripts(tmp_path)
+    result = subprocess.run(
+        [sys.executable, str(scripts_dir / "add_rule.py"),
+         "--title", "   ", "--statement", "S", "--rationale", "R", "--domain", "d"],
+        capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert "title cannot be empty" in result.stderr
+
+
+def test_add_rule_empty_statement(tmp_path: Path):
+    """add_rule 应拒绝空语句。"""
+    scripts_dir = _setup_scripts(tmp_path)
+    result = subprocess.run(
+        [sys.executable, str(scripts_dir / "add_rule.py"),
+         "--title", "T", "--statement", "  ", "--rationale", "R", "--domain", "d"],
+        capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert "statement cannot be empty" in result.stderr
+
+
+def test_add_rule_empty_rationale(tmp_path: Path):
+    """add_rule 应拒绝空理由。"""
+    scripts_dir = _setup_scripts(tmp_path)
+    result = subprocess.run(
+        [sys.executable, str(scripts_dir / "add_rule.py"),
+         "--title", "T", "--statement", "S", "--rationale", "", "--domain", "d"],
+        capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert "rationale cannot be empty" in result.stderr
+
+
+def test_add_rule_empty_domain(tmp_path: Path):
+    """add_rule 应拒绝空域。"""
+    scripts_dir = _setup_scripts(tmp_path)
+    result = subprocess.run(
+        [sys.executable, str(scripts_dir / "add_rule.py"),
+         "--title", "T", "--statement", "S", "--rationale", "R", "--domain", " "],
+        capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert "domain cannot be empty" in result.stderr
+
+
+def test_edit_rule_empty_title(tmp_path: Path):
+    """edit_rule 应拒绝空标题。"""
+    scripts_dir = _setup_scripts(tmp_path)
+    subprocess.run(
+        [sys.executable, str(scripts_dir / "add_rule.py"),
+         "--title", "Old", "--statement", "S", "--rationale", "R", "--domain", "d"],
+        capture_output=True, text=True,
+    )
+    result = subprocess.run(
+        [sys.executable, str(scripts_dir / "edit_rule.py"), "R-001", "--title", "  "],
+        capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert "title cannot be empty" in result.stderr
+
+
+def test_edit_rule_empty_statement(tmp_path: Path):
+    """edit_rule 应拒绝空语句。"""
+    scripts_dir = _setup_scripts(tmp_path)
+    subprocess.run(
+        [sys.executable, str(scripts_dir / "add_rule.py"),
+         "--title", "T", "--statement", "S", "--rationale", "R", "--domain", "d"],
+        capture_output=True, text=True,
+    )
+    result = subprocess.run(
+        [sys.executable, str(scripts_dir / "edit_rule.py"), "R-001", "--statement", ""],
+        capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert "statement cannot be empty" in result.stderr
+
+
+def test_edit_rule_write_error_handling(tmp_path: Path):
+    """edit_rule 应能处理写入错误。"""
+    scripts_dir = _setup_scripts(tmp_path)
+    subprocess.run(
+        [sys.executable, str(scripts_dir / "add_rule.py"),
+         "--title", "T", "--statement", "S", "--rationale", "R", "--domain", "d"],
+        capture_output=True, text=True,
+    )
+    # 将规则文件设为只读以触发写入错误
+    rule_file = tmp_path / ".agents" / "self-evolve" / "rules" / "R-001.json"
+    rule_file.chmod(0o444)
+    result = subprocess.run(
+        [sys.executable, str(scripts_dir / "edit_rule.py"), "R-001", "--title", "New"],
+        capture_output=True, text=True,
+    )
+    # 恢复权限以便清理
+    rule_file.chmod(0o644)
+    assert result.returncode != 0
+    assert "Failed to write" in result.stderr
+
+
+def test_add_rule_write_error_handling(tmp_path: Path):
+    """add_rule 应能处理写入错误。"""
+    scripts_dir = _setup_scripts(tmp_path)
+    rules_dir = tmp_path / ".agents" / "self-evolve" / "rules"
+    rules_dir.mkdir(parents=True)
+    # 将规则目录设为只读以触发写入错误
+    rules_dir.chmod(0o555)
+    result = subprocess.run(
+        [sys.executable, str(scripts_dir / "add_rule.py"),
+         "--title", "T", "--statement", "S", "--rationale", "R", "--domain", "d"],
+        capture_output=True, text=True,
+    )
+    # 恢复权限以便清理
+    rules_dir.chmod(0o755)
+    assert result.returncode != 0
+    assert "Failed to write" in result.stderr
