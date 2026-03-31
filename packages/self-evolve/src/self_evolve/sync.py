@@ -91,6 +91,8 @@ def _load_template(name: str, language: str) -> Template:
     if lang_path.exists():
         return Template(lang_path.read_text(encoding="utf-8"))
     fallback = _TEMPLATES_DIR / f"{name}.en.md.tpl"
+    if not fallback.exists():
+        raise FileNotFoundError(f"Template not found: {name} (neither {lang_path} nor {fallback})")
     return Template(fallback.read_text(encoding="utf-8"))
 
 
@@ -228,6 +230,11 @@ def _sync_scripts(output_dir: Path) -> list[Path]:
     paths: list[Path] = []
     for source in sorted(_SCRIPTS_DIR.glob("*.py")):
         destination = scripts_dir / source.name
-        shutil.copy2(source, destination)
-        paths.append(destination)
+        try:
+            shutil.copy2(source, destination)
+            paths.append(destination)
+        except OSError as e:
+            # 记录错误但继续处理其他脚本
+            import sys
+            print(f"Warning: Failed to copy script {source.name}: {e}", file=sys.stderr)
     return paths
