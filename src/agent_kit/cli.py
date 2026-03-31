@@ -50,7 +50,6 @@ def create_app(
 
     @app.callback(invoke_without_command=True)
     def _root_callback(
-        ctx: Context,
         version: bool = typer.Option(
             False,
             "--version",
