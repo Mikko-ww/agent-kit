@@ -11,7 +11,6 @@ from self_evolve.storage import save_rule
 from self_evolve.models import KnowledgeRule
 
 import logging
-import os
 
 
 runner = CliRunner()
