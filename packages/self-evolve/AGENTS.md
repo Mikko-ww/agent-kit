@@ -1,127 +1,115 @@
 # self-evolve 插件说明
 
-本目录继承上级 [../AGENTS.md](../AGENTS.md) 与根目录 [../../AGENTS.md](../../AGENTS.md) 的规则，本文只补充 `self-evolve` 自身的业务约束。
+本目录继承上级 [../AGENTS.md](../AGENTS.md) 与根目录 [../../AGENTS.md](../../AGENTS.md) 的规则，本文只补充 `self-evolve` 自身约束。
 
 ## 1. 插件目标
 
-`self-evolve` 负责为 Agent 提供以项目为基础的自我进化能力：通过结构化的学习捕获、模式识别、规则推广和统一 Skill 同步，以 Skill 方式接入 Cursor、VS Code Copilot、Codex 等主流编码 Agent，形成"经验 → 模式 → 规则 → Agent Skill"的闭环演进系统。
+`self-evolve` v4 是一个项目级知识流水线插件，用于把结构化 `session` 检测成 `candidate`，再沉淀为正式 `rule`，最后同步为统一 Skill 输出给所有 Agent 消费。
 
-## 2. 命令
+固定流程：
 
-当前插件对外提供以下命令：
+```text
+session -> candidate -> rule -> skill sync
+```
+
+## 2. 对外命令
 
 - `agent-kit self-evolve init`
-- `agent-kit self-evolve capture`
-- `agent-kit self-evolve list`
-- `agent-kit self-evolve analyze`
-- `agent-kit self-evolve promote`
+- `agent-kit self-evolve session record`
+- `agent-kit self-evolve detect run`
+- `agent-kit self-evolve candidate list`
+- `agent-kit self-evolve candidate show`
+- `agent-kit self-evolve candidate accept`
+- `agent-kit self-evolve candidate reject`
+- `agent-kit self-evolve candidate edit`
+- `agent-kit self-evolve rule add`
+- `agent-kit self-evolve rule list`
+- `agent-kit self-evolve rule show`
+- `agent-kit self-evolve rule edit`
+- `agent-kit self-evolve rule retire`
 - `agent-kit self-evolve sync`
-- `agent-kit self-evolve evolve`
 - `agent-kit self-evolve status`
-- `agent-kit self-evolve search`
 
-对应实现入口：
-
-- [src/self_evolve/plugin_cli.py](src/self_evolve/plugin_cli.py)
-- [src/self_evolve/messages.py](src/self_evolve/messages.py)
-- [src/self_evolve/locale.py](src/self_evolve/locale.py)
+旧命令 `capture`、`list`、`analyze`、`promote`、`evolve`、`search` 已全部废弃，不允许继续恢复兼容层。
 
 ## 3. 配置
 
-配置文件位置（项目级）：
+配置文件：
 
 - `<project-root>/.agents/self-evolve/config.jsonc`
 
-当前配置核心字段：
+当前有效字段：
 
 - `plugin_id`
 - `config_version`
-- `promotion_threshold`
-- `promotion_window_days`
-- `min_task_count`
-- `auto_promote`
-- `inline_threshold`：自适应策略阈值（默认 20），≤ 阈值时内联全部规则，> 阈值时生成索引+分域文件
+- `auto_accept_enabled`
+- `auto_accept_min_confidence`
+- `inline_threshold`
 
-配置读写实现：
+固定约束：
 
-- [src/self_evolve/config.py](src/self_evolve/config.py)
+- `config_version` 当前为 `4`
+- 旧字段 `promotion_threshold`、`promotion_window_days`、`min_task_count`、`auto_promote` 已废弃
+- 检测到旧配置或旧数据布局时必须直接报错，不得隐式迁移
 
 ## 4. 数据存储
 
-所有数据统一存储在项目根目录 `.agents/` 下，不按智能体类型拆分：
+项目级数据目录固定为：
 
-学习条目存储位置（项目级）：
+- `<project-root>/.agents/self-evolve/sessions/`
+- `<project-root>/.agents/self-evolve/candidates/`
+- `<project-root>/.agents/self-evolve/rules/`
+- `<project-root>/.agents/self-evolve/indexes/`
 
-- `<project-root>/.agents/self-evolve/learnings/`
+规则：
 
-推广规则存储位置（项目级）：
+- `session`、`candidate`、`rule` 统一按单文件 JSON 存储
+- `session` 是主输入，默认不可原地改写
+- `candidate` 和 `rule` 的状态更新后必须刷新索引
+- 不允许回退到 `learnings/` 或 `rules.jsonc` 聚合文件
 
-- `<project-root>/.agents/self-evolve/rules.jsonc`
+## 5. 核心概念
 
-存储实现：
+- **Session**：一次任务会话的结构化事实记录
+- **Candidate**：由检测器生成的待确认知识候选
+- **Rule**：已批准、可同步到 Skill 的正式规则
+- **Index**：维护 session/candidate/rule 追溯与查找关系
+- **Auto Accept**：可选自动生效能力，默认关闭
 
-- [src/self_evolve/storage.py](src/self_evolve/storage.py)
+## 6. Skill 同步
 
-## 5. Agent Skill 同步
+Skill 输出目录固定为：
 
-同步模块采用**自适应分层策略**将推广规则输出为 Skill 文件，供所有 Agent 通过技能发现机制调用：
+- `.agents/skills/self-evolve/SKILL.md`
+- `.agents/skills/self-evolve/catalog.json`
+- `.agents/skills/self-evolve/scripts/find_rules.py`
+- `.agents/skills/self-evolve/domains/*.md`（仅 index 策略）
 
-- **inline 策略**（规则数 ≤ `inline_threshold`）：所有规则内联到 `SKILL.md`
-- **index 策略**（规则数 > `inline_threshold`）：`SKILL.md` 仅包含规则索引表，详细内容拆分到 `domains/*.md` 分域文件
+同步约束：
 
-输出文件：
+- 只同步 `status=active` 的正式 `rule`
+- 不同步 `candidate`
+- 不同步 `session`
+- 继续保留 `inline/index` 双策略
 
-- `.agents/skills/self-evolve/SKILL.md`：统一 Skill 文件（必有）
-- `.agents/skills/self-evolve/catalog.json`：结构化规则目录（index 策略时生成）
-- `.agents/skills/self-evolve/domains/*.md`：分域详细规则（index 策略时生成）
-- `.agents/skills/self-evolve/find_rules.py`：零依赖本地搜索脚本（始终同步）
+## 7. 修改本插件时重点验证
 
-模板文件位于 [src/self_evolve/templates/](src/self_evolve/templates/)，搜索脚本位于 [src/self_evolve/scripts/](src/self_evolve/scripts/)。
-
-同步实现：
-
-- [src/self_evolve/sync.py](src/self_evolve/sync.py)
-
-## 6. 核心概念
-
-- **项目级进化**：所有数据存储在项目 `.agents/self-evolve/` 目录中，进化仅针对当前项目。
-- **统一存储**：不按智能体类型拆分配置和输出，所有 Agent 共享同一份 Skill 文件。
-- **学习条目**（Learning Entry）：结构化的经验记录。
-- **模式识别**（Pattern Detection）：通过 `pattern_key` 精确匹配，关联相似条目。
-- **推广**（Promotion）：满足门槛条件后提炼为永久规则。
-- **同步**（Sync）：将推广规则输出为统一的 `.agents/skills/self-evolve/SKILL.md` 文件，采用自适应分层策略。
-- **搜索**（Search）：按领域、标签或关键词搜索已推广规则。
-- **一键进化**（Evolve）：自动完成 analyze → promote → sync 完整循环。
-- **标签**（Tags）：学习条目和推广规则支持 `tags` 标签列表，推广时自动聚合来源条目的标签。
-- **自适应策略**：根据规则数量自动选择 inline 或 index 策略，类似图书馆找书逻辑（分类 → 标签 → 标题 → 目录 → 线索）。
-
-## 7. 业务规则
-
-- 学习条目按单文件存储在 `.agents/self-evolve/learnings/` 中。
-- 学习 ID 格式为 `L-YYYYMMDD-NNN`，自动递增。
-- 推广规则 ID 格式为 `R-NNN`，自动递增。
-- 模式识别采用 `pattern_key` 精确匹配。
-- 推广条件须同时满足：`recurrence_count >= threshold`、`len(task_ids) >= min_task_count`。
-- 同步输出为 `.agents/skills/self-evolve/SKILL.md` 独占文件，每次同步完整覆写。
-- `capture` 支持 `--tags` 参数为学习条目附加标签。
-- `search` 命令支持 `--domain`、`--tag`、`--keyword`、`--stats`、`--detail` 组合查询。
-- 同步策略由 `inline_threshold` 配置控制，也可通过 `sync --strategy` 手动指定。
-
-## 8. 修改本插件时重点验证
-
-- `init` 是否正确创建 `.agents/self-evolve/` 目录和配置
-- `capture` 是否正确在项目本地生成唯一 ID 并存储条目
-- `list` 是否正确按状态/领域/优先级过滤
-- `analyze` 是否正确识别模式、关联条目、递增计数
-- `promote` 是否正确检查推广条件并生成规则
-- `sync` 是否正确生成 `.agents/skills/self-evolve/SKILL.md`（含 YAML frontmatter）
-- `sync` 在不同策略（inline/index）下是否正确生成对应文件
-- `search` 是否正确按领域、标签、关键词过滤
-- `evolve` 是否正确执行完整进化循环
-- `status` 是否正确统计各维度数据
-- 中英文下的 `--help`、warning/error、状态输出是否保持一致
+- `init` 是否正确创建 v4 目录布局与空 Skill 输出
+- `session record` 是否正确写入结构化 session
+- `detect run` 是否只处理未处理 session，并正确生成或合并 candidate
+- `candidate accept/reject/edit` 是否正确刷新索引与状态
+- `rule add/edit/retire` 是否正确影响 active rule 集合
+- `sync` 是否只消费 active rule，并生成正确的 `catalog.json`
+- `find_rules.py` 是否能基于 v2 catalog 正常检索
+- 中英文 `--help`、warning/error、状态输出是否一致
+- 发现旧布局时是否直接报错且不做迁移
 
 相关测试：
 
-- [tests/test_self_evolve_cli.py](tests/test_self_evolve_cli.py)
-- [tests/test_self_evolve_logic.py](tests/test_self_evolve_logic.py)
+- [tests/test_config.py](tests/test_config.py)
+- [tests/test_models.py](tests/test_models.py)
+- [tests/test_storage.py](tests/test_storage.py)
+- [tests/test_detector.py](tests/test_detector.py)
+- [tests/test_cli_session.py](tests/test_cli_session.py)
+- [tests/test_cli_candidate_rule.py](tests/test_cli_candidate_rule.py)
+- [tests/test_sync.py](tests/test_sync.py)

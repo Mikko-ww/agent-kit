@@ -203,15 +203,11 @@ name = "self-evolve"
 version = "0.4.0"
 source = { editable = "packages/self-evolve" }
 dependencies = [
-    { name = "questionary" },
     { name = "typer" },
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "questionary", specifier = ">=2.0,<3.0" },
-    { name = "typer", specifier = ">=0.12,<1.0" },
-]
+requires-dist = [{ name = "typer", specifier = ">=0.12,<1.0" }]
 
 [[package]]
 name = "shellingham"

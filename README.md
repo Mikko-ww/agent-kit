@@ -9,6 +9,7 @@
 - 当前第一方插件包括：
   - [packages/skills-link](packages/skills-link)：把本地 skills 目录按目录粒度链接到目标目录
   - [packages/opencode-env-switch](packages/opencode-env-switch)：通过 shell 环境变量切换 OpenCode profile
+  - [packages/self-evolve](packages/self-evolve)：把项目内 session 检测成 candidate/rule，并同步为统一 Skill 输出
 
 ## 插件安装模型
 
@@ -72,6 +73,8 @@ agent-kit sl status
 agent-kit plugins info opencode-env-switch
 agent-kit opencode-env-switch status
 agent-kit oes status
+agent-kit plugins info self-evolve
+agent-kit self-evolve status
 ```
 
 ## CLI alias

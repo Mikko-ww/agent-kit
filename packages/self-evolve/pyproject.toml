@@ -5,7 +5,6 @@ description = "Self-evolving agent skill toolkit for agent-kit."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "questionary>=2.0,<3.0",
     "typer>=0.12,<1.0",
 ]
 

@@ -1,3 +1,3 @@
-# ${domain} 领域规则
+# ${domain} Rules
 
 ${rules_content}

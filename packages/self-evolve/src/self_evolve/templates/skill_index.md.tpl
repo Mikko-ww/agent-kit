@@ -1,7 +1,7 @@
-## 规则概览
+## Rule Index
 
-| 领域 | 规则数 | 最近更新 |
-|------|--------|----------|
+| Domain | Rules | Latest |
+|--------|-------|--------|
 ${domain_table_rows}
 
-> 详细规则请查看 `domains/<领域名>.md` 或使用检索脚本查询。
+See `domains/<domain>.md` for details.

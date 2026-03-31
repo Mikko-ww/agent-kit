@@ -1,178 +1,178 @@
 # self-evolve
 
-Project-based self-evolution toolkit for [agent-kit](https://github.com/Mikko-ww/agent-kit).
+`self-evolve` 是 `agent-kit` 的第一方插件，用来把项目内的结构化工作会话沉淀成可审核、可追溯、可同步的知识规则。
 
-## Overview
+它不再使用旧版的 `learning -> analyze -> promote -> evolve` 模型，而是固定采用下面这条流水线：
 
-`self-evolve` enables project-level self-evolution by integrating as an **Agent Skill** into mainstream coding agents — Cursor, VS Code Copilot, Codex and more. It captures development experience within a project and evolves it into reusable rules that are automatically synced to a unified skill file under `.agents/skills/self-evolve/SKILL.md`, discoverable by any agent.
+```text
+session -> candidate -> rule -> skill sync
+```
 
-**Capture → Analyze → Promote → Sync**
+## 核心模型
 
-- **Capture**: Record structured learning entries from task experience (project-scoped)
-- **Analyze**: Detect patterns, link related entries, identify promotion candidates
-- **Promote**: Elevate validated learnings to permanent rules
-- **Sync**: Write rules to a unified skill file (`.agents/skills/self-evolve/SKILL.md`)
+- `session`：一次任务或开发会话的结构化事实输入。
+- `candidate`：从 session 中检测出的待确认知识候选。
+- `rule`：已经批准、可直接供 Agent 消费的正式规则。
+- `skill sync`：把 active rule 同步到 `.agents/skills/self-evolve/`。
 
-## Installation
+## 安装
 
 ```bash
 agent-kit plugins install self-evolve
 ```
 
-## Quick Start
+## 快速开始
 
-### 1. Initialize project
+### 1. 初始化项目
 
 ```bash
 cd your-project
 agent-kit self-evolve init
 ```
 
-This creates `.agents/self-evolve/` directory and generates the initial skill file at `.agents/skills/self-evolve/SKILL.md`.
+初始化后会创建：
 
-### 2. Capture a learning
+- `.agents/self-evolve/config.jsonc`
+- `.agents/self-evolve/sessions/`
+- `.agents/self-evolve/candidates/`
+- `.agents/self-evolve/rules/`
+- `.agents/self-evolve/indexes/`
+- `.agents/skills/self-evolve/SKILL.md`
+
+### 2. 记录 session
 
 ```bash
-agent-kit self-evolve capture \
-  --summary "Always validate env vars before startup" \
+agent-kit self-evolve session record \
+  --summary "修复启动阶段环境变量校验" \
   --domain debugging \
-  --priority high \
-  --pattern-key env-var-validation \
-  --task-id task-42 \
-  --tags "env,validation"
+  --outcome success \
+  --lesson "服务启动前必须先校验必填环境变量" \
+  --tag env \
+  --file src/app.py
 ```
 
-### 3. Analyze patterns
+### 3. 运行候选检测
 
 ```bash
-agent-kit self-evolve analyze
+agent-kit self-evolve detect run
 ```
 
-### 4. Promote to a rule
+### 4. 审核 candidate
 
 ```bash
-agent-kit self-evolve promote L-20260330-001 \
-  --rule "Validate all required environment variables at application startup"
+agent-kit self-evolve candidate list
+agent-kit self-evolve candidate show C-001
+agent-kit self-evolve candidate accept C-001
 ```
 
-### 5. Sync rules to skill file
+### 5. 或直接录入正式 rule
+
+```bash
+agent-kit self-evolve rule add \
+  --title "启动前校验环境变量" \
+  --statement "在服务启动前校验所有必填环境变量。" \
+  --rationale "避免进入部分启动成功、运行时再失败的状态。" \
+  --domain debugging \
+  --tag env
+```
+
+### 6. 同步 Skill
 
 ```bash
 agent-kit self-evolve sync
 ```
 
-### 6. One-step evolution
+## 命令总览
 
-```bash
-agent-kit self-evolve evolve
-```
+### 根命令
 
-This runs the full cycle: analyze → auto-promote eligible → sync.
+- `agent-kit self-evolve init`
+- `agent-kit self-evolve sync`
+- `agent-kit self-evolve status`
 
-### 7. Check status
+### session
 
-```bash
-agent-kit self-evolve status
-```
+- `agent-kit self-evolve session record`
 
-### 8. Search rules
+### detect
 
-```bash
-# Search by domain
-agent-kit self-evolve search --domain debugging
+- `agent-kit self-evolve detect run`
 
-# Search by tag
-agent-kit self-evolve search --tag env
+### candidate
 
-# Fuzzy keyword search
-agent-kit self-evolve search --keyword "environment"
+- `agent-kit self-evolve candidate list`
+- `agent-kit self-evolve candidate show <candidate-id>`
+- `agent-kit self-evolve candidate accept <candidate-id>`
+- `agent-kit self-evolve candidate reject <candidate-id>`
+- `agent-kit self-evolve candidate edit <candidate-id>`
 
-# Show domain statistics
-agent-kit self-evolve search --stats
-```
+### rule
 
-## Commands
+- `agent-kit self-evolve rule add`
+- `agent-kit self-evolve rule list`
+- `agent-kit self-evolve rule show <rule-id>`
+- `agent-kit self-evolve rule edit <rule-id>`
+- `agent-kit self-evolve rule retire <rule-id>`
 
-| Command | Description |
-|---------|-------------|
-| `init` | Initialize self-evolution for the current project |
-| `capture` | Capture a new learning entry |
-| `list` | List learning entries with filtering |
-| `analyze` | Analyze patterns and detect duplicates |
-| `promote` | Promote a learning to a permanent rule |
-| `sync` | Sync promoted rules to the unified skill file |
-| `evolve` | One-step: analyze + auto-promote + sync |
-| `status` | Show evolution status overview |
-| `search` | Search promoted rules by domain, tag, or keyword |
+## 配置
 
-## Skill Discovery
+配置文件位置：
 
-All promoted rules are output using an **adaptive layering strategy**:
+- `<project-root>/.agents/self-evolve/config.jsonc`
 
-| Strategy | Condition | Output |
-|----------|-----------|--------|
-| `inline` | rules ≤ `inline_threshold` (default 20) | All rules embedded in SKILL.md |
-| `index` | rules > `inline_threshold` | SKILL.md contains index table, details in `domains/*.md` |
-
-| Output File | Description |
-|------------|-------------|
-| `.agents/skills/self-evolve/SKILL.md` | Unified skill file (always present) |
-| `.agents/skills/self-evolve/catalog.json` | Structured rule catalog (index strategy) |
-| `.agents/skills/self-evolve/domains/*.md` | Per-domain detail files (index strategy) |
-| `.agents/skills/self-evolve/find_rules.py` | Zero-dependency local search script (always synced) |
-
-Any agent that supports `.agents/skills/` skill discovery (Cursor, Copilot, Codex, etc.) can automatically find and use this skill file. No per-agent configuration is needed.
-
-## Configuration
-
-Config file: `<project-root>/.agents/self-evolve/config.jsonc`
+当前字段：
 
 ```jsonc
 {
   "plugin_id": "self-evolve",
-  "config_version": 3,
-  "promotion_threshold": 3,
-  "promotion_window_days": 30,
-  "min_task_count": 2,
-  "auto_promote": false
-}
-
-  "auto_promote": false
+  "config_version": 4,
+  "auto_accept_enabled": false,
+  "auto_accept_min_confidence": 0.9,
+  "inline_threshold": 20
 }
 ```
 
-| Field | Description | Default |
-|-------|-------------|---------|
-| `promotion_threshold` | Recurrence count needed for promotion | `3` |
-| `promotion_window_days` | Time window for promotion eligibility | `30` |
-| `min_task_count` | Minimum distinct tasks for promotion | `2` |
-| `auto_promote` | Auto-promote eligible entries in evolve | `false` |
-| `inline_threshold` | Max rules for inline strategy (above switches to index) | `20` |
+- `auto_accept_enabled`：是否允许候选在检测阶段自动生效。
+- `auto_accept_min_confidence`：自动生效所需最低置信度。
+- `inline_threshold`：Skill 输出在 inline/index 策略之间切换的阈值。
 
-## Data Storage
+## 数据布局
 
-```
+```text
 <project-root>/
 ├── .agents/
 │   ├── self-evolve/
-│   │   ├── config.jsonc          # Project config
-│   │   ├── learnings/            # Learning entries
-│   │   │   ├── L-20260330-001.jsonc
-│   │   │   └── ...
-│   │   └── rules.jsonc           # Promoted rules
+│   │   ├── config.jsonc
+│   │   ├── sessions/
+│   │   ├── candidates/
+│   │   ├── rules/
+│   │   └── indexes/
 │   └── skills/
 │       └── self-evolve/
-│           ├── SKILL.md          # Unified skill file (auto-generated)
-│           ├── catalog.json      # Rule catalog (index strategy)
-│           ├── find_rules.py     # Local search script
-│           └── domains/          # Per-domain detail files (index strategy)
+│           ├── SKILL.md
+│           ├── catalog.json
+│           ├── scripts/find_rules.py
+│           └── domains/
 ```
 
-## Language Support
+## Skill 输出
 
-Supports `en` (English) and `zh-CN` (Chinese). Language is resolved via:
+`sync` 只消费 `status=active` 的正式 rule，不会把 candidate 或 session 暴露给 Skill 消费侧。
 
-1. `AGENT_KIT_LANG` environment variable
-2. Global config `~/.config/agent-kit/config.jsonc`
-3. System locale
-4. Default: `en`
+- `inline`：规则数不超过 `inline_threshold` 时，直接内联到 `SKILL.md`
+- `index`：规则数超阈值时，`SKILL.md` 只给索引，详细内容写入 `domains/*.md`
+
+项目内可直接用脚本检索：
+
+```bash
+python .agents/skills/self-evolve/scripts/find_rules.py --stats
+python .agents/skills/self-evolve/scripts/find_rules.py --keyword "environment"
+python .agents/skills/self-evolve/scripts/find_rules.py --detail --domain debugging
+```
+
+## 重要说明
+
+- 不做任何前向兼容。
+- 旧版 `.agents/self-evolve/learnings/`、`.agents/self-evolve/rules.jsonc` 和旧 CLI 已全部废弃。
+- 发现旧布局时会直接报错，不提供自动迁移。
+- CLI 继续支持 `en` 与 `zh-CN`，语言决议顺序与 `agent-kit` core 保持一致。
