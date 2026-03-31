@@ -20,7 +20,7 @@ from self_evolve.storage import (
     save_learning,
     save_rules,
 )
-from self_evolve.sync import SyncResult, sync_to_targets
+from self_evolve.sync import SyncResult, sync_skill
 
 
 @dataclass(slots=True, frozen=True)
@@ -49,7 +49,7 @@ class EvolutionStatus:
 class EvolveResult:
     analysis: AnalysisResult
     promoted: list[PromotedRule]
-    sync_results: list[SyncResult]
+    sync_result: SyncResult | None
 
 
 # ── 项目初始化 ─────────────────────────────────────────────────────
@@ -59,14 +59,14 @@ def init_project(
     project_root: Path,
     config: SelfEvolveConfig,
 ) -> Path:
-    """在项目根目录创建 .self-evolve/ 并写入配置。"""
+    """在项目根目录创建 .agents/self-evolve/ 并写入配置。"""
     edir = evolve_dir(project_root)
     edir.mkdir(parents=True, exist_ok=True)
 
     config_path = save_config(project_root, config)
 
-    # 初次同步，生成空的 agent skill 文件
-    sync_to_targets(project_root, [], config.targets)
+    # 初次同步，生成空的 Skill 文件
+    sync_skill(project_root, [])
 
     return config_path
 
@@ -218,10 +218,10 @@ def promote_learning(
 def sync_rules(
     project_root: Path,
     config: SelfEvolveConfig,
-) -> list[SyncResult]:
-    """将所有推广规则同步到配置的 agent targets。"""
+) -> SyncResult:
+    """将所有推广规则同步到统一的 Skill 文件。"""
     rules = load_rules(project_root)
-    return sync_to_targets(project_root, rules, config.targets)
+    return sync_skill(project_root, rules)
 
 
 # ── 一键进化 ──────────────────────────────────────────────────────
@@ -241,12 +241,12 @@ def evolve(
         if rule:
             promoted.append(rule)
 
-    sync_results = sync_rules(project_root, config)
+    sync_result = sync_rules(project_root, config)
 
     return EvolveResult(
         analysis=analysis,
         promoted=promoted,
-        sync_results=sync_results,
+        sync_result=sync_result,
     )
 
 
