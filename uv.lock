@@ -200,7 +200,7 @@ wheels = [
 
 [[package]]
 name = "self-evolve"
-version = "0.5.0"
+version = "0.4.2"
 source = { editable = "packages/self-evolve" }
 dependencies = [
     { name = "typer" },
