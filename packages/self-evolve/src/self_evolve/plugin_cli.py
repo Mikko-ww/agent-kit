@@ -1,4 +1,4 @@
-"""v5 CLI——仅 init/sync/status。"""
+"""CLI——仅 init/sync/status。"""
 
 from __future__ import annotations
 

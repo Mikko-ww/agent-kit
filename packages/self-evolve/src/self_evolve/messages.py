@@ -1,4 +1,4 @@
-"""v5 CLI 翻译。"""
+"""CLI 翻译。"""
 
 from __future__ import annotations
 

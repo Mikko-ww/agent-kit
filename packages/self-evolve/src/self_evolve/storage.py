@@ -1,4 +1,4 @@
-"""v5 存储层——仅 Rule 持久化。"""
+"""存储层——仅 Rule 持久化。"""
 
 from __future__ import annotations
 

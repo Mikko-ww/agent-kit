@@ -1,4 +1,4 @@
-"""v5 数据模型——仅 KnowledgeRule。"""
+"""数据模型——仅 KnowledgeRule。"""
 
 from __future__ import annotations
 

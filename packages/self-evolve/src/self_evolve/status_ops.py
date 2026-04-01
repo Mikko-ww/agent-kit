@@ -1,4 +1,4 @@
-"""v5 状态统计。"""
+"""状态统计。"""
 
 from __future__ import annotations
 

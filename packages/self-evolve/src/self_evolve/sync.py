@@ -1,4 +1,4 @@
-"""v5 Skill 同步引擎。"""
+"""Skill 同步引擎。"""
 
 from __future__ import annotations
 

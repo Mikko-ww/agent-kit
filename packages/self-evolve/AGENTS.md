@@ -4,7 +4,7 @@
 
 ## 1. 插件目标
 
-`self-evolve` v5 是一个项目级知识规则管理插件，采用 Rule-only 极简架构。Agent 通过 Skill 中嵌入的反思注入指令和零依赖脚本直接操作 Rule，无中间实体。
+`self-evolve` 是一个项目级知识规则管理插件，采用 Rule-only 极简架构。Agent 通过 Skill 中嵌入的反思注入指令和零依赖脚本直接操作 Rule，无中间实体。
 
 固定流程：
 
@@ -18,7 +18,7 @@ Agent 反思 → 脚本写入 Rule → sync → SKILL.md
 - `agent-kit self-evolve sync`
 - `agent-kit self-evolve status`
 
-v5 不提供 session/candidate/rule/detect 子命令。Rule CRUD 由 `scripts/` 目录下的零依赖 Python 脚本完成。
+不提供 session/candidate/rule/detect 子命令。Rule CRUD 由 `scripts/` 目录下的零依赖 Python 脚本完成。
 
 ## 3. 配置
 
@@ -78,7 +78,7 @@ Skill 输出目录固定为：
 
 ## 7. 修改本插件时重点验证
 
-- `init` 是否正确创建 v5 目录布局、提示选择模板语言并写入配置
+- `init` 是否正确创建目录布局、提示选择模板语言并写入配置
 - `sync` 是否只消费 active rule，并按配置语言生成正确的模板与 `catalog.json`
 - `catalog.json` 版本是否为 1，规则条目是否不包含 `source_sessions`、`source_candidates`
 - 五个脚本是否正确复制到 Skill 输出目录

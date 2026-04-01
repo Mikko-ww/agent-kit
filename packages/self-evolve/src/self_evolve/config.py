@@ -1,4 +1,4 @@
-"""v5 配置管理。"""
+"""配置管理。"""
 
 from __future__ import annotations
 
