@@ -235,3 +235,47 @@ def test_completion_translation_keys_consistent_between_en_and_zh():
     en_keys = {k for k in MESSAGES["en"] if k.startswith("completion.")}
     zh_keys = {k for k in MESSAGES["zh-CN"] if k.startswith("completion.")}
     assert en_keys == zh_keys
+
+
+def test_install_changed_field_is_false_when_file_exists_with_same_content(monkeypatch, tmp_path):
+    """当文件已存在且内容相同时，changed 字段应为 False。"""
+    custom_dir = tmp_path / "custom"
+    custom_dir.mkdir()
+    monkeypatch.setenv("ZSH_CUSTOM", str(custom_dir))
+    from agent_kit.completion import install_zsh_completion
+    # 第一次安装
+    result1 = install_zsh_completion(home=tmp_path)
+    assert result1.changed is True
+    # 第二次安装，内容相同
+    result2 = install_zsh_completion(home=tmp_path)
+    assert result2.changed is False
+
+
+def test_remove_validates_managed_marker_before_deletion(monkeypatch, tmp_path):
+    """卸载时应验证 managed marker，不删除非 agent-kit 管理的文件。"""
+    monkeypatch.delenv("ZSH_CUSTOM", raising=False)
+    from agent_kit.completion import remove_zsh_completion
+    # 手动创建一个不包含 managed marker 的文件
+    zfunc_dir = tmp_path / ".zfunc"
+    zfunc_dir.mkdir()
+    fake_file = zfunc_dir / "_agent-kit"
+    fake_file.write_text("# some other completion", encoding="utf-8")
+    # 卸载不应删除非托管文件
+    result = remove_zsh_completion(home=tmp_path)
+    assert result.removed is False
+    assert fake_file.exists()
+
+
+def test_completion_script_version_in_output():
+    """补全脚本应包含版本信息。"""
+    from agent_kit.completion import generate_zsh_completion_script, COMPLETION_SCRIPT_VERSION
+    script = generate_zsh_completion_script()
+    assert f"v{COMPLETION_SCRIPT_VERSION}" in script
+
+
+def test_omz_plugin_version_in_output():
+    """oh-my-zsh 插件入口应包含版本信息。"""
+    from agent_kit.completion import generate_omz_plugin_zsh, COMPLETION_SCRIPT_VERSION
+    plugin = generate_omz_plugin_zsh()
+    assert f"v{COMPLETION_SCRIPT_VERSION}" in plugin
+

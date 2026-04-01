@@ -139,6 +139,42 @@ agent-kit completion remove     # 卸载补全
 - **oh-my-zsh 用户**：补全脚本安装到 `$ZSH_CUSTOM/plugins/agent-kit/`，需要在 `~/.zshrc` 的 `plugins=(...)` 中添加 `agent-kit`
 - **非 oh-my-zsh 用户**：补全脚本安装到 `~/.zfunc/_agent-kit`，需要在 `~/.zshrc` 中添加 `fpath=(~/.zfunc $fpath)` 和 `autoload -Uz compinit && compinit`
 
+### 故障排查
+
+如果补全不生效，请依次检查：
+
+1. **验证安装位置**
+   ```bash
+   agent-kit completion show  # 查看补全脚本内容
+   ls -la ~/.zfunc/_agent-kit  # 或检查 oh-my-zsh 插件目录
+   ```
+
+2. **oh-my-zsh 用户**：确认 `~/.zshrc` 中 `plugins=()` 包含 `agent-kit`
+   ```bash
+   grep "plugins=" ~/.zshrc
+   # 应包含: plugins=(... agent-kit ...)
+   ```
+
+3. **非 oh-my-zsh 用户**：确认 `~/.zshrc` 包含以下配置
+   ```bash
+   grep -E "(fpath|compinit)" ~/.zshrc
+   # 应包含:
+   # fpath=(~/.zfunc $fpath)
+   # autoload -Uz compinit && compinit
+   ```
+
+4. **重新加载 shell**
+   ```bash
+   exec zsh  # 或 source ~/.zshrc
+   ```
+
+5. **调试补全执行**（验证 agent-kit 命令可正常执行）
+   ```bash
+   _AGENT_KIT_COMPLETE=zsh_complete agent-kit
+   # 应输出 Zsh 补全建议，而非报错
+   ```
+
+
 ## CLI 多语言
 
 `agent-kit` 与第一方插件当前支持 `en` 和 `zh-CN`，默认语言是英文。
