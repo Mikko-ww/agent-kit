@@ -201,3 +201,89 @@ def test_sync_index_stale_safe_domain_files_are_removed(tmp_path: Path):
     assert len(second_result.domain_files) == 1
     assert second_result.domain_files[0].name == "release-notes.md"
     assert second_result.domain_files[0].exists()
+
+
+# ── plan_sync / dry-run 测试 ──
+
+
+def test_plan_sync_first_sync_all_add(tmp_path: Path):
+    """首次 sync 前，所有文件应为 add。"""
+    _init_project(tmp_path)
+    save_rule(tmp_path, _make_rule())
+    from self_evolve.sync import plan_sync
+    plan = plan_sync(tmp_path)
+    actions = {a.path.name: a.action for a in plan.file_actions}
+    assert actions["SKILL.md"] == "add"
+    assert actions["catalog.json"] == "add"
+    assert plan.previous_strategy is None
+    assert plan.strategy == "inline"
+    assert plan.rules_count == 1
+
+
+def test_plan_sync_modify_after_rule_change(tmp_path: Path):
+    """已 sync 后改规则，SKILL.md 和 catalog.json 应为 modify。"""
+    _init_project(tmp_path)
+    save_rule(tmp_path, _make_rule())
+    sync_skill(tmp_path)
+    save_rule(tmp_path, _make_rule("R-002", domain="architecture"))
+    from self_evolve.sync import plan_sync
+    plan = plan_sync(tmp_path)
+    actions = {a.path.name: a.action for a in plan.file_actions}
+    assert actions["SKILL.md"] == "modify"
+    assert actions["catalog.json"] == "modify"
+
+
+def test_plan_sync_unchanged_when_no_diff(tmp_path: Path):
+    """sync 后规则未变，文件应为 unchanged。"""
+    _init_project(tmp_path)
+    save_rule(tmp_path, _make_rule())
+    sync_skill(tmp_path)
+    from self_evolve.sync import plan_sync
+    plan = plan_sync(tmp_path)
+    actions = {a.path.name: a.action for a in plan.file_actions}
+    assert actions["SKILL.md"] == "unchanged"
+    assert actions["catalog.json"] == "unchanged"
+
+
+def test_plan_sync_strategy_change_inline_to_index(tmp_path: Path):
+    """规则数跨越阈值时显示策略变更。"""
+    _init_project(tmp_path)
+    save_rule(tmp_path, _make_rule())
+    sync_skill(tmp_path, inline_threshold=20)
+    # 现在添加 25 条规则
+    for i in range(25):
+        save_rule(tmp_path, _make_rule(f"R-{i + 1:03d}"))
+    from self_evolve.sync import plan_sync
+    plan = plan_sync(tmp_path, inline_threshold=20)
+    assert plan.previous_strategy == "inline"
+    assert plan.strategy == "index"
+
+
+def test_plan_sync_shows_files_to_delete(tmp_path: Path):
+    """从 index 切回 inline 时显示待删除 domain 文件。"""
+    _init_project(tmp_path)
+    for i in range(25):
+        save_rule(tmp_path, _make_rule(f"R-{i + 1:03d}"))
+    sync_skill(tmp_path, inline_threshold=20)
+    # 减少到 1 条规则，让它回到 inline
+    from self_evolve.config import rules_dir
+    for f in rules_dir(tmp_path).glob("R-*.json"):
+        if f.stem != "R-001":
+            f.unlink()
+    from self_evolve.sync import plan_sync
+    plan = plan_sync(tmp_path, inline_threshold=20)
+    assert plan.strategy == "inline"
+    assert plan.previous_strategy == "index"
+    assert len(plan.files_to_delete) > 0
+    assert all(f.suffix == ".md" for f in plan.files_to_delete)
+
+
+def test_plan_sync_does_not_write(tmp_path: Path):
+    """plan_sync 不应写入任何文件。"""
+    _init_project(tmp_path)
+    save_rule(tmp_path, _make_rule())
+    from self_evolve.sync import plan_sync
+    from self_evolve.config import skill_dir
+    plan = plan_sync(tmp_path)
+    assert not (skill_dir(tmp_path) / "SKILL.md").exists()
+    assert plan.rules_count == 1

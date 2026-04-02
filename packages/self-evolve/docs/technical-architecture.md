@@ -232,6 +232,17 @@ class KnowledgeRule:
 6. 生成 `SKILL.md`、`catalog.json`、可选的 `domains/*.md`
 7. 复制零依赖脚本到 `.agents/skills/self-evolve/scripts/`
 
+#### `--dry-run` 预览模式
+
+当传入 `--dry-run` 选项时，`sync` 命令不执行实际写入，而是通过 `plan_sync()` 计算并展示以下信息：
+
+- 当前策略与策略变更（inline ↔ index）
+- active 规则数量
+- 各文件的变更状态（add / modify / unchanged）
+- 待删除的过期文件
+
+内部实现通过 `_compute_sync_outputs()` 将渲染与写盘分离，`sync_skill()` 和 `plan_sync()` 共享同一套计算逻辑。
+
 ### 7.3 `status`
 
 入口：`plugin_cli.py:status_command`
