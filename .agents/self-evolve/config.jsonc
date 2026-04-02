@@ -1,0 +1,6 @@
+{
+  "plugin_id": "self-evolve",
+  "config_version": 5,
+  "language": "zh-CN",
+  "inline_threshold": 20
+}
