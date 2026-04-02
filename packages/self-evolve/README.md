@@ -19,6 +19,10 @@ Agent 反思 → 脚本写入 Rule → sync → SKILL.md
 agent-kit plugins install self-evolve
 ```
 
+## 技术文档
+
+- 详细技术架构见 [`docs/technical-architecture.md`](docs/technical-architecture.md)
+
 ## 快速开始
 
 ### 1. 初始化项目
