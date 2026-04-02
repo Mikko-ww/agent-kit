@@ -26,7 +26,7 @@ python .agents/skills/self-evolve/scripts/list_rules.py --keyword "<关键词>"
 从当前对话上下文中提取以下结构化信息：
 
 - **domain**：知识所属领域（如 `debugging`、`testing`、`architecture`、`performance`）
-- **title**：简短标题（10 字以内）
+- **title**：简短标题（20 字以内）
 - **statement**：规则的精确描述——必须是可执行的祈使句或明确约束，不要用模糊表述
 - **rationale**：为什么需要这条规则——必须说明不遵循时的具体后果
 - **tags**：相关标签

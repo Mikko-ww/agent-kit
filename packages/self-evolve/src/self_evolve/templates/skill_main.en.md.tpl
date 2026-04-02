@@ -26,7 +26,7 @@ python .agents/skills/self-evolve/scripts/list_rules.py --keyword "<keyword>"
 From the current conversation context, extract the following structured information:
 
 - **domain**: The knowledge domain (e.g., `debugging`, `testing`, `architecture`, `performance`)
-- **title**: A short title (under 10 words)
+- **title**: A short title (max 20 characters)
 - **statement**: A precise rule description — must be an actionable imperative or clear constraint, avoid vague wording
 - **rationale**: Why this rule is needed — must explain specific consequences of not following it
 - **tags**: Related tags
