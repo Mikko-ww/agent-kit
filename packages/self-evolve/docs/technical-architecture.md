@@ -240,10 +240,13 @@ class KnowledgeRule:
 
 1. 寻找项目根
 2. 读取配置
-3. 通过 `get_status()` 聚合规则状态分布
-4. 输出 `total` 和各状态计数
-
-`status` 当前只提供聚合概览，不展示 domain 维度或同步差异。
+3. 通过 `get_status()` 聚合规则状态与可观测信息
+4. 输出以下内容：
+   - 规则总数与各状态计数（active / retired 等）
+   - active 规则的 domain 分布（按 domain 聚合计数）
+   - 当前策略（inline 或 index）与 `inline_threshold` 阈值
+   - 上次同步时间（读取 `catalog.json` 中的 `last_synced`）
+   - 是否需要同步（比较 `rules/` 最新 mtime 与 `SKILL.md` mtime）
 
 ## 8. Rule CRUD 为什么放在脚本层
 
