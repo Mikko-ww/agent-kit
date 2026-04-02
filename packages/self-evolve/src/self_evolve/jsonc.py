@@ -23,6 +23,72 @@ def write_jsonc(path: Path, data: Any) -> Path:
     return path
 
 
+def merge_flat_jsonc(raw: str, values: dict) -> str:
+    """更新平铺 JSONC 中的字段值，保留注释和格式。
+
+    仅适用于顶层无嵌套、值为 JSON 原始类型（string / number / bool / null）的对象。
+    逐行处理，跳过纯注释行，对匹配到的 "key": value 只替换 value 部分。
+    """
+    import re
+
+    lines = raw.split("\n")
+    pending = dict(values)
+    result: list[str] = []
+
+    _VALUE = r'(?:"(?:[^"\\]|\\.)*"|[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?|true|false|null)'
+
+    for line in lines:
+        if not pending:
+            result.append(line)
+            continue
+
+        stripped = line.lstrip()
+        if stripped.startswith("//") or stripped.startswith("/*") or stripped.startswith("*"):
+            result.append(line)
+            continue
+
+        matched = False
+        for key in list(pending):
+            pattern = r'("' + re.escape(key) + r'"\s*:\s*)' + _VALUE
+            m = re.search(pattern, line)
+            if m:
+                new_val = json.dumps(pending[key], ensure_ascii=False)
+                prefix = line[: m.start()]
+                key_colon = m.group(1)
+                tail = line[m.end() :]
+                tail = _fix_displaced_comma(tail)
+                result.append(prefix + key_colon + new_val + tail)
+                del pending[key]
+                matched = True
+                break
+
+        if not matched:
+            result.append(line)
+
+    return "\n".join(result)
+
+
+def _fix_displaced_comma(tail: str) -> str:
+    """如果逗号被位移到行内注释中，将其移回注释前。"""
+    comment_idx = -1
+    for i in range(len(tail)):
+        if tail[i] == "/" and i + 1 < len(tail) and tail[i + 1] == "/":
+            comment_idx = i
+            break
+    if comment_idx < 0:
+        return tail
+    pre_comment = tail[:comment_idx]
+    comment = tail[comment_idx:]
+    if "," in pre_comment:
+        return tail
+    stripped_comment = comment.rstrip()
+    if stripped_comment.endswith(","):
+        fixed_comment = stripped_comment[:-1]
+        trailing = comment[len(stripped_comment) :]
+        return "," + pre_comment + fixed_comment + trailing
+    return tail
+
+
 def _strip_json_comments(content: str) -> str:
     result: list[str] = []
     in_string = False

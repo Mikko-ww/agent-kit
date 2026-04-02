@@ -46,10 +46,14 @@ def find_project_root(start: Path) -> Path | None:
         current = parent
 
 
+_CONFIG_HEADER = "// self-evolve configuration\n// JSONC format: comments are preserved on programmatic updates.\n"
+
+
 def save_config(project_root: Path, config: SelfEvolveConfig) -> Path:
+    from self_evolve.jsonc import merge_flat_jsonc
+
     path = config_file_path(project_root)
     path.parent.mkdir(parents=True, exist_ok=True)
-    import json
 
     payload = {
         "plugin_id": PLUGIN_ID,
@@ -57,10 +61,15 @@ def save_config(project_root: Path, config: SelfEvolveConfig) -> Path:
         "language": config.language,
         "inline_threshold": config.inline_threshold,
     }
-    path.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
+
+    if path.exists():
+        raw = path.read_text(encoding="utf-8")
+        content = merge_flat_jsonc(raw, payload)
+    else:
+        import json
+        content = _CONFIG_HEADER + json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+
+    path.write_text(content, encoding="utf-8")
     return path
 
 
