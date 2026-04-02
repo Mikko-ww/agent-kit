@@ -164,3 +164,38 @@ def test_status_shows_last_synced(tmp_path: Path):
     result = runner.invoke(app, ["status"])
     assert result.exit_code == 0
     assert "2026-" in result.stdout
+
+
+# ── sync --dry-run 测试 ──
+
+
+def test_sync_dry_run_shows_preview(tmp_path: Path):
+    """sync --dry-run 应输出预览信息而不实际写文件。"""
+    _init_project(tmp_path)
+    save_rule(tmp_path, KnowledgeRule(
+        id="R-001", created_at="2026-01-01T00:00:00Z", status="active",
+        title="T", statement="S", rationale="R", domain="testing", tags=[],
+    ))
+
+    app = build_app(cwd=tmp_path, runtime_factory=lambda: _make_runtime(tmp_path))
+    result = runner.invoke(app, ["sync", "--dry-run"])
+    assert result.exit_code == 0
+    assert "dry run" in result.stdout.lower() or "模拟运行" in result.stdout
+    assert "SKILL.md" in result.stdout
+    # dry-run 不应实际写文件
+    from self_evolve.config import skill_dir
+    assert not (skill_dir(tmp_path) / "SKILL.md").exists()
+
+
+def test_sync_dry_run_shows_strategy(tmp_path: Path):
+    """sync --dry-run 应展示策略信息。"""
+    _init_project(tmp_path)
+    save_rule(tmp_path, KnowledgeRule(
+        id="R-001", created_at="2026-01-01T00:00:00Z", status="active",
+        title="T", statement="S", rationale="R", domain="testing", tags=[],
+    ))
+
+    app = build_app(cwd=tmp_path, runtime_factory=lambda: _make_runtime(tmp_path))
+    result = runner.invoke(app, ["sync", "--dry-run"])
+    assert result.exit_code == 0
+    assert "inline" in result.stdout

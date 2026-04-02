@@ -22,7 +22,7 @@ from self_evolve.config import (
 from self_evolve.locale import resolve_language
 from self_evolve.messages import translate
 from self_evolve.status_ops import get_status
-from self_evolve.sync import sync_skill
+from self_evolve.sync import plan_sync, sync_skill
 
 
 @dataclass(slots=True)
@@ -105,7 +105,9 @@ def build_app(
         typer.echo(_tr(runtime, "init.completed"))
 
     @app.command("sync", help=_t(language, "sync.help"))
-    def sync_command() -> None:
+    def sync_command(
+        dry_run: bool = typer.Option(False, "--dry-run", help=_t(language, "sync.dry_run.help")),
+    ) -> None:
         runtime = runtime_factory()
         if cwd is not None:
             runtime.cwd = cwd
@@ -114,13 +116,45 @@ def build_app(
         if cfg is None:
             typer.echo(_tr(runtime, "warning.not_initialized"), err=True)
             raise typer.Exit(1)
-        result = sync_skill(project_root, inline_threshold=cfg.inline_threshold)
-        typer.echo(_tr(
-            runtime,
-            "sync.completed",
-            rules_count=result.rules_count,
-            strategy=result.strategy,
-        ))
+
+        if dry_run:
+            plan = plan_sync(project_root, inline_threshold=cfg.inline_threshold)
+            typer.echo(_tr(runtime, "sync.dry_run.header"))
+            typer.echo("")
+
+            if plan.previous_strategy and plan.previous_strategy != plan.strategy:
+                typer.echo(_tr(runtime, "sync.dry_run.strategy_change", previous=plan.previous_strategy, current=plan.strategy))
+            typer.echo(_tr(runtime, "sync.dry_run.strategy", strategy=plan.strategy, threshold=cfg.inline_threshold))
+            typer.echo(_tr(runtime, "sync.dry_run.rules", count=plan.rules_count))
+            typer.echo("")
+
+            changes = [a for a in plan.file_actions if a.action != "unchanged"]
+            if not changes and not plan.files_to_delete:
+                typer.echo(_tr(runtime, "sync.dry_run.no_changes"))
+            else:
+                typer.echo(_tr(runtime, "sync.dry_run.files_header"))
+                for action in plan.file_actions:
+                    relative = action.path.name
+                    if action.path.parent.name in ("domains", "scripts"):
+                        relative = f"{action.path.parent.name}/{action.path.name}"
+                    typer.echo(f"  [{action.action:9s}]  {relative}")
+
+                typer.echo("")
+                if plan.files_to_delete:
+                    typer.echo(_tr(runtime, "sync.dry_run.deletes_header"))
+                    for path in plan.files_to_delete:
+                        relative = f"domains/{path.name}" if path.parent.name == "domains" else path.name
+                        typer.echo(f"  [-]  {relative}")
+                else:
+                    typer.echo(_tr(runtime, "sync.dry_run.no_deletes"))
+        else:
+            result = sync_skill(project_root, inline_threshold=cfg.inline_threshold)
+            typer.echo(_tr(
+                runtime,
+                "sync.completed",
+                rules_count=result.rules_count,
+                strategy=result.strategy,
+            ))
 
     @app.command("status", help=_t(language, "status.help"))
     def status_command() -> None:

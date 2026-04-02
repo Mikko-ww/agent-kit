@@ -59,40 +59,90 @@ class SyncResult:
     script_paths: list[Path] = field(default_factory=list)
 
 
+@dataclass(slots=True, frozen=True)
+class FileAction:
+    path: Path
+    action: str  # "add" | "modify" | "unchanged"
+
+
+@dataclass(slots=True, frozen=True)
+class SyncPlan:
+    strategy: str
+    previous_strategy: str | None
+    rules_count: int
+    file_actions: list[FileAction]
+    files_to_delete: list[Path]
+
+
 def sync_skill(
     project_root: Path,
     *,
     inline_threshold: int = 20,
     language: str | None = None,
 ) -> SyncResult:
-    lang = language or resolve_template_language(project_root)
-    rules = [r for r in list_rules(project_root) if r.status == "active"]
+    outputs = _compute_sync_outputs(project_root, inline_threshold=inline_threshold, language=language)
     output_dir = skill_dir(project_root)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    strategy = "inline" if len(rules) <= inline_threshold else "index"
-    domain_filename_map = _build_domain_filename_map(rules) if strategy == "index" else {}
+    for path, content in outputs.file_contents.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
 
-    skill_md = _render_skill_md(rules, strategy, lang, domain_filename_map)
+    scripts_dir = output_dir / "scripts"
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    script_paths: list[Path] = []
+    for dest, source in outputs.script_copies.items():
+        try:
+            shutil.copy2(source, dest)
+            script_paths.append(dest)
+        except OSError as e:
+            import sys
+            print(f"Warning: Failed to copy script {source.name}: {e}", file=sys.stderr)
+
+    _cleanup_stale_domains(output_dir, outputs.strategy, outputs.domain_filename_map)
+
     skill_path = output_dir / "SKILL.md"
-    skill_path.write_text(skill_md, encoding="utf-8")
-
-    catalog_path = _render_catalog(output_dir, rules)
-    domain_files = (
-        _render_domain_files(output_dir, rules, lang, domain_filename_map)
-        if strategy == "index"
-        else []
-    )
-    _cleanup_stale_domains(output_dir, strategy, domain_filename_map)
-    script_paths = _sync_scripts(output_dir)
+    catalog_path = output_dir / "catalog.json"
+    domain_files = [p for p in outputs.file_contents if p.parent.name == "domains"]
 
     return SyncResult(
         path=skill_path,
-        rules_count=len(rules),
-        strategy=strategy,
-        domain_files=domain_files,
+        rules_count=outputs.rules_count,
+        strategy=outputs.strategy,
+        domain_files=sorted(domain_files),
         catalog_path=catalog_path,
         script_paths=script_paths,
+    )
+
+
+def plan_sync(
+    project_root: Path,
+    *,
+    inline_threshold: int = 20,
+    language: str | None = None,
+) -> SyncPlan:
+    """计算 sync 将产生的变更，但不写入任何文件。"""
+    outputs = _compute_sync_outputs(project_root, inline_threshold=inline_threshold, language=language)
+    output_dir = skill_dir(project_root)
+    previous_strategy = _detect_previous_strategy(output_dir)
+
+    file_actions: list[FileAction] = []
+    for path, content in outputs.file_contents.items():
+        file_actions.append(_classify_file_action(path, content))
+
+    for dest, source in outputs.script_copies.items():
+        try:
+            source_content = source.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        file_actions.append(_classify_file_action(dest, source_content))
+
+    return SyncPlan(
+        strategy=outputs.strategy,
+        previous_strategy=previous_strategy,
+        rules_count=outputs.rules_count,
+        file_actions=sorted(file_actions, key=lambda a: str(a.path)),
+        files_to_delete=outputs.stale_files,
     )
 
 
@@ -207,11 +257,11 @@ def _render_index_section(
     return tpl.safe_substitute(domain_table_rows="\n".join(rows))
 
 
-def _render_catalog(output_dir: Path, rules: list[KnowledgeRule]) -> Path:
+def _build_catalog_payload(rules: list[KnowledgeRule]) -> dict:
     domains: dict[str, int] = defaultdict(int)
     for rule in rules:
         domains[rule.domain] += 1
-    payload = {
+    return {
         "version": 1,
         "last_synced": str(date.today()),
         "summary": {
@@ -232,6 +282,10 @@ def _render_catalog(output_dir: Path, rules: list[KnowledgeRule]) -> Path:
             for rule in rules
         ],
     }
+
+
+def _render_catalog(output_dir: Path, rules: list[KnowledgeRule]) -> Path:
+    payload = _build_catalog_payload(rules)
     path = output_dir / "catalog.json"
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return path
@@ -263,6 +317,16 @@ def _render_domain_files(
     return paths
 
 
+def _find_stale_domains(output_dir: Path, strategy: str, domain_filename_map: dict[str, str]) -> list[Path]:
+    domains_dir = output_dir / "domains"
+    if not domains_dir.exists():
+        return []
+    if strategy == "inline":
+        return sorted(domains_dir.glob("*.md"))
+    active_filenames = set(domain_filename_map.values())
+    return sorted(p for p in domains_dir.glob("*.md") if p.name not in active_filenames)
+
+
 def _cleanup_stale_domains(output_dir: Path, strategy: str, domain_filename_map: dict[str, str]) -> None:
     domains_dir = output_dir / "domains"
     if not domains_dir.exists():
@@ -270,10 +334,8 @@ def _cleanup_stale_domains(output_dir: Path, strategy: str, domain_filename_map:
     if strategy == "inline":
         shutil.rmtree(domains_dir)
         return
-    active_filenames = set(domain_filename_map.values())
-    for path in domains_dir.glob("*.md"):
-        if path.name not in active_filenames:
-            path.unlink()
+    for path in _find_stale_domains(output_dir, strategy, domain_filename_map):
+        path.unlink()
 
 
 def _sync_scripts(output_dir: Path) -> list[Path]:
@@ -286,7 +348,91 @@ def _sync_scripts(output_dir: Path) -> list[Path]:
             shutil.copy2(source, destination)
             paths.append(destination)
         except OSError as e:
-            # 记录错误但继续处理其他脚本
             import sys
             print(f"Warning: Failed to copy script {source.name}: {e}", file=sys.stderr)
     return paths
+
+
+@dataclass(slots=True)
+class _SyncOutputs:
+    strategy: str
+    rules_count: int
+    domain_filename_map: dict[str, str]
+    file_contents: dict[Path, str]
+    script_copies: dict[Path, Path]  # dest → source
+    stale_files: list[Path]
+
+
+def _compute_sync_outputs(
+    project_root: Path,
+    *,
+    inline_threshold: int = 20,
+    language: str | None = None,
+) -> _SyncOutputs:
+    lang = language or resolve_template_language(project_root)
+    rules = [r for r in list_rules(project_root) if r.status == "active"]
+    output_dir = skill_dir(project_root)
+
+    strategy = "inline" if len(rules) <= inline_threshold else "index"
+    domain_filename_map = _build_domain_filename_map(rules) if strategy == "index" else {}
+
+    file_contents: dict[Path, str] = {}
+
+    skill_md = _render_skill_md(rules, strategy, lang, domain_filename_map)
+    file_contents[output_dir / "SKILL.md"] = skill_md
+
+    payload = _build_catalog_payload(rules)
+    file_contents[output_dir / "catalog.json"] = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+
+    if strategy == "index":
+        groups = _group_by_domain(rules)
+        domains_dir = output_dir / "domains"
+        tpl = _load_template("domain_detail", lang)
+        for domain in sorted(groups):
+            lines: list[str] = []
+            for rule in groups[domain]:
+                lines.append(f"**{rule.id}: {rule.title}**\n")
+                lines.append(f"- {_copy(lang, 'domain.statement')}: {rule.statement}")
+                lines.append(f"- {_copy(lang, 'domain.rationale')}: {rule.rationale}")
+                tags_str = ", ".join(rule.tags) if rule.tags else _copy(lang, "none")
+                lines.append(f"- {_copy(lang, 'domain.tags')}: {tags_str}\n")
+            content = tpl.safe_substitute(domain=domain, rules_content="\n".join(lines))
+            file_contents[domains_dir / domain_filename_map[domain]] = content
+
+    script_copies: dict[Path, Path] = {}
+    scripts_dir = output_dir / "scripts"
+    for source in sorted(_SCRIPTS_DIR.glob("*.py")):
+        script_copies[scripts_dir / source.name] = source
+
+    stale_files = _find_stale_domains(output_dir, strategy, domain_filename_map)
+
+    return _SyncOutputs(
+        strategy=strategy,
+        rules_count=len(rules),
+        domain_filename_map=domain_filename_map,
+        file_contents=file_contents,
+        script_copies=script_copies,
+        stale_files=stale_files,
+    )
+
+
+def _detect_previous_strategy(output_dir: Path) -> str | None:
+    skill_md = output_dir / "SKILL.md"
+    if not skill_md.exists():
+        return None
+    domains_dir = output_dir / "domains"
+    if domains_dir.is_dir() and any(domains_dir.glob("*.md")):
+        return "index"
+    return "inline"
+
+
+def _classify_file_action(path: Path, new_content: str) -> FileAction:
+    if not path.exists():
+        return FileAction(path=path, action="add")
+    try:
+        existing = path.read_text(encoding="utf-8")
+    except OSError:
+        return FileAction(path=path, action="add")
+    if existing == new_content:
+        return FileAction(path=path, action="unchanged")
+    return FileAction(path=path, action="modify")
