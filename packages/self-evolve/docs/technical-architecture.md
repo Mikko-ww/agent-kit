@@ -170,6 +170,10 @@ class KnowledgeRule:
 - `language` 仅决定 Skill 模板语言
 - CLI 文案语言仍由 `agent-kit` core 的语言链路决定
 - 模板语言决议顺序为：项目配置 `language` -> `AGENT_KIT_LANG` -> `en`
+- 配置文件使用 JSONC 格式（JSON with Comments），支持 `//` 和 `/* */` 注释
+- `save_config()` 写回时保留已有注释：逐行匹配字段并只替换值部分，注释和格式原样保留
+- 新建配置文件时自动添加 header comment 说明格式
+- round-trip 实现位于 `jsonc.py:merge_flat_jsonc()`，仅适用于平铺原始值类型
 
 这意味着 CLI 语言和生成出来的 `SKILL.md` 语言是解耦的。
 
