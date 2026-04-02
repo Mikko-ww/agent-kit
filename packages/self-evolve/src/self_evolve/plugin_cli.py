@@ -132,10 +132,18 @@ def build_app(
         if cfg is None:
             typer.echo(_tr(runtime, "warning.not_initialized"), err=True)
             raise typer.Exit(1)
-        status = get_status(project_root)
+        status = get_status(project_root, inline_threshold=cfg.inline_threshold)
         total = sum(status.rule_counts.values())
         counts_str = ", ".join(f"{k}={v}" for k, v in sorted(status.rule_counts.items()))
         typer.echo(_tr(runtime, "status.rules", total=total, counts=counts_str or "0"))
+
+        if status.domain_distribution:
+            domain_str = ", ".join(f"{k}={v}" for k, v in status.domain_distribution.items())
+            typer.echo(_tr(runtime, "status.domains", domains=domain_str))
+
+        typer.echo(_tr(runtime, "status.strategy", strategy=status.strategy, threshold=cfg.inline_threshold))
+        typer.echo(_tr(runtime, "status.last_synced", last_synced=status.last_synced or "-"))
+        typer.echo(_tr(runtime, "status.needs_sync", needs_sync=_tr(runtime, "yes" if status.needs_sync else "no")))
 
     return app
 
