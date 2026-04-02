@@ -139,6 +139,14 @@ agent-kit self-evolve sync
 - `inline`：规则数不超过 `inline_threshold` 时，直接内联到 `SKILL.md`
 - `index`：规则数超阈值时，`SKILL.md` 只给索引，详细内容写入 `domains/*.md`
 
+`index` 策略下，`domains/*.md` 不直接使用原始 `domain` 作为文件名，而是使用安全文件名映射：
+
+- 优先使用由 `domain` 归一化得到的 slug
+- 如果多个 domain 归一化后冲突，则该冲突桶中的所有 domain 都使用 `slug--<短哈希>.md`
+- 如果 slug 命中 Windows 保留文件名，也使用 `slug--<短哈希>.md`
+- `SKILL.md` 中的详情链接指向安全文件名
+- domain 详情页正文仍展示原始 `domain`
+
 SKILL.md 包含反思注入指令，引导 Agent 从对话上下文中提取结构化知识并调用脚本写入规则。
 
 ## 重要说明

@@ -125,3 +125,79 @@ def test_sync_index_mixed_timestamp_formats(tmp_path: Path):
     assert result.strategy == "index"
     content = result.path.read_text(encoding="utf-8")
     assert "2026-03-15" in content
+
+
+def test_sync_index_unsafe_domain_uses_safe_filenames(tmp_path: Path):
+    _init_project(tmp_path)
+    save_rule(tmp_path, _make_rule("R-001", domain="Debugging / Tips"))
+
+    result = sync_skill(tmp_path, inline_threshold=0)
+
+    assert result.strategy == "index"
+    assert len(result.domain_files) == 1
+    domain_file = result.domain_files[0]
+    assert domain_file.parent.name == "domains"
+    assert domain_file.exists()
+    assert domain_file.name == "debugging-tips.md"
+    assert " " not in domain_file.name
+    assert "/" not in domain_file.name
+
+    skill_content = result.path.read_text(encoding="utf-8")
+    assert "[→ details](domains/debugging-tips.md)" in skill_content
+    assert "Debugging / Tips" in skill_content
+
+    detail_content = domain_file.read_text(encoding="utf-8")
+    assert "Debugging / Tips" in detail_content
+
+
+def test_sync_index_domain_slug_conflict_adds_hash_suffix(tmp_path: Path):
+    _init_project(tmp_path)
+    save_rule(tmp_path, _make_rule("R-001", domain="A/B"))
+    save_rule(tmp_path, _make_rule("R-002", domain="A B"))
+
+    result = sync_skill(tmp_path, inline_threshold=0)
+
+    assert result.strategy == "index"
+    domain_names = sorted(path.name for path in result.domain_files)
+    assert len(domain_names) == 2
+    assert domain_names[0] != domain_names[1]
+    assert all(name.startswith("a-b--") and name.endswith(".md") for name in domain_names)
+
+    skill_content = result.path.read_text(encoding="utf-8")
+    for domain_name in domain_names:
+        assert f"(domains/{domain_name})" in skill_content
+    assert skill_content.count("[→ details](") == 2
+
+
+def test_sync_index_reserved_windows_name_adds_hash_suffix(tmp_path: Path):
+    _init_project(tmp_path)
+    save_rule(tmp_path, _make_rule("R-001", domain="CON"))
+
+    result = sync_skill(tmp_path, inline_threshold=0)
+
+    assert result.strategy == "index"
+    assert len(result.domain_files) == 1
+    domain_file = result.domain_files[0]
+    assert domain_file.name.startswith("con--")
+    assert domain_file.name.endswith(".md")
+
+    skill_content = result.path.read_text(encoding="utf-8")
+    assert f"(domains/{domain_file.name})" in skill_content
+
+
+def test_sync_index_stale_safe_domain_files_are_removed(tmp_path: Path):
+    _init_project(tmp_path)
+    save_rule(tmp_path, _make_rule("R-001", domain="Debugging / Tips"))
+
+    first_result = sync_skill(tmp_path, inline_threshold=0)
+    old_domain_file = first_result.domain_files[0]
+    assert old_domain_file.exists()
+
+    save_rule(tmp_path, _make_rule("R-001", domain="Release / Notes"))
+
+    second_result = sync_skill(tmp_path, inline_threshold=0)
+
+    assert not old_domain_file.exists()
+    assert len(second_result.domain_files) == 1
+    assert second_result.domain_files[0].name == "release-notes.md"
+    assert second_result.domain_files[0].exists()

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 import shutil
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -16,6 +18,14 @@ from self_evolve.storage import list_rules
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 _SCRIPTS_DIR = Path(__file__).parent / "scripts"
+_WINDOWS_RESERVED_BASENAMES = {
+    "con",
+    "prn",
+    "aux",
+    "nul",
+    *(f"com{i}" for i in range(1, 10)),
+    *(f"lpt{i}" for i in range(1, 10)),
+}
 
 _SYNC_COPY: dict[str, dict[str, str]] = {
     "en": {
@@ -61,14 +71,19 @@ def sync_skill(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     strategy = "inline" if len(rules) <= inline_threshold else "index"
+    domain_filename_map = _build_domain_filename_map(rules) if strategy == "index" else {}
 
-    skill_md = _render_skill_md(rules, strategy, lang)
+    skill_md = _render_skill_md(rules, strategy, lang, domain_filename_map)
     skill_path = output_dir / "SKILL.md"
     skill_path.write_text(skill_md, encoding="utf-8")
 
     catalog_path = _render_catalog(output_dir, rules)
-    domain_files = _render_domain_files(output_dir, rules, lang) if strategy == "index" else []
-    _cleanup_stale_domains(output_dir, rules, strategy)
+    domain_files = (
+        _render_domain_files(output_dir, rules, lang, domain_filename_map)
+        if strategy == "index"
+        else []
+    )
+    _cleanup_stale_domains(output_dir, strategy, domain_filename_map)
     script_paths = _sync_scripts(output_dir)
 
     return SyncResult(
@@ -103,12 +118,43 @@ def _group_by_domain(rules: list[KnowledgeRule]) -> dict[str, list[KnowledgeRule
     return dict(groups)
 
 
-def _render_skill_md(rules: list[KnowledgeRule], strategy: str, language: str) -> str:
+def _slugify_domain(domain: str) -> str:
+    slug = re.sub(r"[^\w]+", "-", domain.strip().lower(), flags=re.UNICODE)
+    slug = re.sub(r"-{2,}", "-", slug).strip("-_.")
+    return slug or "domain"
+
+
+def _short_hash(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:8]
+
+
+def _build_domain_filename_map(rules: list[KnowledgeRule]) -> dict[str, str]:
+    domains = sorted({rule.domain for rule in rules})
+    domains_by_slug: dict[str, list[str]] = defaultdict(list)
+    for domain in domains:
+        domains_by_slug[_slugify_domain(domain)].append(domain)
+
+    mapping: dict[str, str] = {}
+    for slug, bucket in sorted(domains_by_slug.items()):
+        if len(bucket) == 1 and slug not in _WINDOWS_RESERVED_BASENAMES:
+            mapping[bucket[0]] = f"{slug}.md"
+            continue
+        for domain in bucket:
+            mapping[domain] = f"{slug}--{_short_hash(domain)}.md"
+    return mapping
+
+
+def _render_skill_md(
+    rules: list[KnowledgeRule],
+    strategy: str,
+    language: str,
+    domain_filename_map: dict[str, str],
+) -> str:
     description = _copy(language, "description.with_rules" if rules else "description.empty")
     if strategy == "inline":
         rules_section = _render_inline_section(rules, language)
     else:
-        rules_section = _render_index_section(rules, language)
+        rules_section = _render_index_section(rules, language, domain_filename_map)
     tpl = _load_template("skill_main", language)
     return tpl.safe_substitute(
         description=description,
@@ -144,7 +190,11 @@ def _parse_timestamp(ts: str) -> datetime:
         return datetime.min
 
 
-def _render_index_section(rules: list[KnowledgeRule], language: str) -> str:
+def _render_index_section(
+    rules: list[KnowledgeRule],
+    language: str,
+    domain_filename_map: dict[str, str],
+) -> str:
     groups = _group_by_domain(rules)
     tpl = _load_template("skill_index", language)
     rows: list[str] = []
@@ -152,7 +202,8 @@ def _render_index_section(rules: list[KnowledgeRule], language: str) -> str:
         count = len(groups[domain])
         latest_dt = max(_parse_timestamp(r.created_at) for r in groups[domain])
         latest_str = latest_dt.strftime("%Y-%m-%d") if latest_dt != datetime.min else "unknown"
-        rows.append(f"| {domain} | {count} | {latest_str} | [→ details](domains/{domain}.md) |")
+        filename = domain_filename_map[domain]
+        rows.append(f"| {domain} | {count} | {latest_str} | [→ details](domains/{filename}) |")
     return tpl.safe_substitute(domain_table_rows="\n".join(rows))
 
 
@@ -187,7 +238,10 @@ def _render_catalog(output_dir: Path, rules: list[KnowledgeRule]) -> Path:
 
 
 def _render_domain_files(
-    output_dir: Path, rules: list[KnowledgeRule], language: str
+    output_dir: Path,
+    rules: list[KnowledgeRule],
+    language: str,
+    domain_filename_map: dict[str, str],
 ) -> list[Path]:
     groups = _group_by_domain(rules)
     domains_dir = output_dir / "domains"
@@ -203,24 +257,22 @@ def _render_domain_files(
             tags_str = ", ".join(rule.tags) if rule.tags else _copy(language, "none")
             lines.append(f"- {_copy(language, 'domain.tags')}: {tags_str}\n")
         content = tpl.safe_substitute(domain=domain, rules_content="\n".join(lines))
-        path = domains_dir / f"{domain}.md"
+        path = domains_dir / domain_filename_map[domain]
         path.write_text(content, encoding="utf-8")
         paths.append(path)
     return paths
 
 
-def _cleanup_stale_domains(
-    output_dir: Path, rules: list[KnowledgeRule], strategy: str
-) -> None:
+def _cleanup_stale_domains(output_dir: Path, strategy: str, domain_filename_map: dict[str, str]) -> None:
     domains_dir = output_dir / "domains"
     if not domains_dir.exists():
         return
     if strategy == "inline":
         shutil.rmtree(domains_dir)
         return
-    active_domains = {r.domain for r in rules}
+    active_filenames = set(domain_filename_map.values())
     for path in domains_dir.glob("*.md"):
-        if path.stem not in active_domains:
+        if path.name not in active_filenames:
             path.unlink()
 
 
