@@ -16,6 +16,7 @@ agent-kit = "agent_kit.cli:main"
 [dependency-groups]
 dev = [
     "opencode-env-switch",
+    "planning-files-skill",
     "self-evolve",
     "skills-link",
     "pytest>=8.3,<9.0",
@@ -23,11 +24,12 @@ dev = [
 
 [tool.uv.sources]
 opencode-env-switch = { workspace = true }
+planning-files-skill = { workspace = true }
 self-evolve = { workspace = true }
 skills-link = { workspace = true }
 
 [tool.uv.workspace]
-members = ["packages/skills-link", "packages/opencode-env-switch", "packages/self-evolve"]
+members = ["packages/skills-link", "packages/opencode-env-switch", "packages/self-evolve", "packages/planning-files-skill"]
 
 [tool.pytest.ini_options]
 testpaths = [
@@ -35,6 +37,7 @@ testpaths = [
     "packages/skills-link/tests",
     "packages/opencode-env-switch/tests",
     "packages/self-evolve/tests",
+    "packages/planning-files-skill/tests",
 ]
 
 [build-system]

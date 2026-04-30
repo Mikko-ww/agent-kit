@@ -10,6 +10,7 @@
   - [packages/skills-link](packages/skills-link)：把本地 skills 目录按目录粒度链接到目标目录
   - [packages/opencode-env-switch](packages/opencode-env-switch)：通过 shell 环境变量切换 OpenCode profile
   - [packages/self-evolve](packages/self-evolve)：把项目内 session 检测成 candidate/rule，并同步为统一 Skill 输出
+  - [packages/planning-files-skill](packages/planning-files-skill)：把精简后的 `planning-files` skill 导入到 Codex、Cursor、OpenCode 或通用 Agent Skills 目录
 
 ## 插件安装模型
 
@@ -75,6 +76,10 @@ agent-kit opencode-env-switch status
 agent-kit oes status
 agent-kit plugins info self-evolve
 agent-kit self-evolve status
+agent-kit se status
+agent-kit plugins info planning-files-skill
+agent-kit planning-files-skill import --platform codex --language zh-CN --scope project
+agent-kit pfs status --platform codex --scope project
 ```
 
 ## CLI alias
@@ -104,6 +109,8 @@ core 还支持为官方插件提供固定短名：
 
 - `skills-link -> sl`
 - `opencode-env-switch -> oes`
+- `self-evolve -> se`
+- `planning-files-skill -> pfs`
 
 例如：
 
@@ -112,8 +119,12 @@ agent-kit skills-link --help
 agent-kit sl status
 agent-kit sl --help
 agent-kit oes status
+agent-kit se status
+agent-kit planning-files-skill import --platform codex --language zh-CN --scope project
+agent-kit pfs status --platform codex --scope project
 ak sl status
 ak oes status
+ak pfs status --platform codex --scope project
 ```
 
 行为约定：
@@ -121,6 +132,8 @@ ak oes status
 - 插件短名由 core 内置维护，当前不支持用户自定义
 - `agent-kit sl ...` 等价于 `agent-kit skills-link ...`
 - `agent-kit oes ...` 等价于 `agent-kit opencode-env-switch ...`
+- `agent-kit se ...` 等价于 `agent-kit self-evolve ...`
+- `agent-kit pfs ...` 等价于 `agent-kit planning-files-skill ...`
 - `agent-kit <plugin-id> --help` 和对应短名 `--help` 都会直接显示插件自己的帮助信息
 - root help 会在 canonical 插件命令旁标注 alias，但 alias 本身不作为独立 help 项显示
 
@@ -233,6 +246,7 @@ AGENT_KIT_CACHE_DIR="$PWD/.tmp/cache"
 ak plugins list
 ak skills-link status
 ak opencode-env-switch status
+ak planning-files-skill import --platform generic --language zh-CN --scope project --dry-run
 ```
 
 其中 `ak` 是 `source scripts/dev/dev-env.sh` 后注入到当前终端的 shell 函数，不等同于 `agent-kit alias enable` 创建的 `~/.local/bin/ak` wrapper。
@@ -240,6 +254,7 @@ ak opencode-env-switch status
 - `ak plugins ...` 仍然等价于 `uv run agent-kit plugins ...`
 - `ak skills-link ...` 会直接调用当前 workspace 中的 `skills-link` 插件
 - `ak opencode-env-switch ...` 会直接调用当前 workspace 中的 `opencode-env-switch` 插件
+- `ak planning-files-skill ...` 会直接调用当前 workspace 中的 `planning-files-skill` 插件
 
 ```bash
 uv run agent-kit plugins list

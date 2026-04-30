@@ -14,7 +14,7 @@ mkdir -p "$AGENT_KIT_CONFIG_DIR" "$AGENT_KIT_DATA_DIR" "$AGENT_KIT_CACHE_DIR"
 ak() {
   if [[ $# -gt 0 ]]; then
     case "$1" in
-      skills-link|opencode-env-switch)
+      skills-link|opencode-env-switch|planning-files-skill)
         local plugin_id="$1"
         shift
         uv run python scripts/dev/run_workspace_plugin.py "$plugin_id" "$@"

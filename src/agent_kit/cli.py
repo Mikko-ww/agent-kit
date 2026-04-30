@@ -17,6 +17,7 @@ from agent_kit.paths import AgentKitLayout
 
 PLUGIN_COMMAND_ALIASES = {
     "opencode-env-switch": "oes",
+    "planning-files-skill": "pfs",
     "self-evolve": "se",
     "skills-link": "sl",
 }

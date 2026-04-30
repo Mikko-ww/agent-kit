@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import importlib
 import sys
 
 
 PLUGIN_MODULES = {
     "skills-link": "skills_link.plugin_cli",
     "opencode-env-switch": "opencode_env_switch.plugin_cli",
+    "planning-files-skill": "planning_files_skill.plugin_cli",
 }
 
 
@@ -24,14 +26,7 @@ def main() -> int:
 
     sys.argv = ["agent-kit-plugin", *plugin_args]
 
-    if module_name == "skills_link.plugin_cli":
-        from skills_link import plugin_cli
-
-        plugin_cli.main()
-        return 0
-
-    from opencode_env_switch import plugin_cli
-
+    plugin_cli = importlib.import_module(module_name)
     plugin_cli.main()
     return 0
 

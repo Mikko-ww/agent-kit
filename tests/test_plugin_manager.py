@@ -178,6 +178,8 @@ def test_builtin_registry_includes_opencode_env_switch():
 
     assert "opencode-env-switch" in registry["plugins"]
     assert registry["plugins"]["opencode-env-switch"]["package_name"] == "opencode-env-switch"
+    assert "planning-files-skill" in registry["plugins"]
+    assert registry["plugins"]["planning-files-skill"]["package_name"] == "planning-files-skill"
 
 
 def test_layout_supports_plugin_artifact_paths(tmp_path: Path):
