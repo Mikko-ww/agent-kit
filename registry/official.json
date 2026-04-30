@@ -22,8 +22,8 @@
       "package_name": "planning-files-skill",
       "git_url": "https://github.com/Mikko-ww/agent-kit.git",
       "subdirectory": "packages/planning-files-skill",
-      "version": "0.1.0",
-      "tag": "planning-files-skill-v0.1.0",
+      "version": "0.1.1",
+      "tag": "planning-files-skill-v0.1.1",
       "api_version": 1,
       "min_core_version": "0.1.0"
     },
